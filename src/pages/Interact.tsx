@@ -443,14 +443,12 @@ const Interact = () => {
     });
 
     // Build URL with query parameters based on analysis type
-    // Updated to use new backend endpoints instead of proxy endpoints
+    // Updated to use proxy endpoints instead of unified /api/documents/process
     switch (analysisType) {
       case "summarize":
-        // For document processing, we'll use the /documents/process endpoint
-        // and include summary instructions in the request
-        url = `/api/documents/process`;
+        // Use the proxy endpoint for summarization
+        url = `/api/proxy/summarize-documents`;
         // Add summary parameters as form data
-        formData.append('operation', 'summarize');
         formData.append('summary_instructions', summaryInstructions);
         formData.append('summary_type', summaryType);
         formData.append('max_length', maxLength.toString());
@@ -458,13 +456,11 @@ const Interact = () => {
         break;
 
       case "clauses":
-        url = `/api/documents/process`;
-        formData.append('operation', 'analyze_clauses');
+        url = `/api/proxy/analyze-clauses`;
         break;
 
       case "risk":
-        url = `/api/documents/process`;
-        formData.append('operation', 'assess_risks');
+        url = `/api/proxy/assess-risks`;
         formData.append('document_type', documentType);
         formData.append('assessment_focus', assessmentFocus);
         formData.append('include_recommendations', includeRecommendations.toString());
@@ -473,32 +469,28 @@ const Interact = () => {
         break;
 
       case "chronology":
-        url = `/api/documents/process`;
-        formData.append('operation', 'extract_chronology');
+        url = `/api/proxy/extract-chronology`;
         formData.append('document_date', documentDate);
         break;
 
       case "classify":
-        url = `/api/documents/process`;
-        formData.append('operation', 'classify_document');
+        url = `/api/proxy/classify-document`;
         formData.append('document_type_hint', documentTypeHint);
         formData.append('classification_focus', classificationFocus);
         break;
 
       case "chat":
-        url = `/api/chat`;
+        url = `/api/proxy/chat-with-document`;
         // Add user_message and other chat options as form data
-        formData.append('message', userMessage);
+        formData.append('user_message', userMessage);
         formData.append('mode', chatMode);
         formData.append('temperature', temperature.toString());
         formData.append('max_tokens', maxTokens.toString());
         break;
 
       default: // extract-text as default
-        url = `/api/documents/process`;
-        formData.append('operation', 'extract_text');
-    }
-    try {
+        url = `/api/proxy/extract-text`;
+    }    try {
       // Add a timeout to the fetch request
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout

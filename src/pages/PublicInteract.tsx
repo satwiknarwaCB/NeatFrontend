@@ -451,86 +451,38 @@ const PublicInteract = () => {
       case "summarize":
         // For document processing, we'll use the /documents/process endpoint
         // and include summary instructions in the request
-        url = `/documents/process`;
+        url = `/api/proxy/summarize-documents`;
         // Add summary parameters as form data
-        formData.append('operation', 'summarize');
         formData.append('summary_instructions', summaryInstructions);
         formData.append('summary_type', summaryType);
         formData.append('max_length', maxLength.toString());
-        formData.append('include_key_points', includeKeyPoints.toString());
-        break;
+        formData.append('include_key_points', includeKeyPoints.toString());        break;
 
       case "clauses":
-        url = `/documents/process`;
-        formData.append('operation', 'analyze_clauses');
+        url = `/api/proxy/analyze-clauses`;
         break;
-
       case "risk":
-        url = `/documents/process`;
-        formData.append('operation', 'assess_risks');
+        url = `/api/proxy/assess-risks`;
         formData.append('document_type', documentType);
         formData.append('assessment_focus', assessmentFocus);
         formData.append('include_recommendations', includeRecommendations.toString());
         formData.append('risk_categories', riskCategories);
         formData.append('custom_instructions', customInstructions);
-        break;
-
-      case "chronology":
-        url = `/documents/process`;
-        formData.append('operation', 'extract_chronology');
+        break;      case "chronology":
+        url = `/api/proxy/extract-chronology`;
         formData.append('document_date', documentDate);
-        break;
-
-      case "classify":
-        url = `/documents/process`;
-        formData.append('operation', 'classify_document');
+        break;      case "classify":
+        url = `/api/proxy/classify-document`;
         formData.append('document_type_hint', documentTypeHint);
         formData.append('classification_focus', classificationFocus);
+        break;      case "chat":
+        url = `/api/proxy/chat-with-document`;
+        // Add user_message and other chat options as form data
+        formData.append('user_message', userMessage);
+        formData.append('mode', chatMode);
+        formData.append('temperature', temperature.toString());
+        formData.append('max_tokens', maxTokens.toString());
         break;
-
-      case "chat":
-        // For chat, we should use the chatWithAI function instead of processDocuments
-        try {
-          // For backward compatibility, if chatMode is one of the old values, map it to new values
-          const chatbotMode = chatMode;
-          // Use chatWithAI function for chat operations
-          const chatData = await chatWithAI(userMessage, chatbotMode);
-          
-          // Handle chat response
-          result = {
-            analysis: chatData.response,
-            sources: files.map(f => ({ file_name: f.name })),
-            tokens_used: chatData.tokens_used,
-            processing_time: 0,
-            analysis_id: `chat-${Date.now()}`,
-            summary: "",
-            response: chatData.response,
-            chat_history: [{
-              role: 'assistant',
-              content: chatData.response,
-              timestamp: new Date().toISOString()
-            }]
-          };
-          
-          setAnalysisResult(result);
-          setShowRightPanel(true);
-          
-          toast({
-            title: "Chat response received!",
-            description: "AI response is ready.",
-          });
-        } catch (error) {
-          toast({
-            title: "Chat failed",
-            description: `Failed to get chat response: ${error.message}`,
-            variant: "destructive",
-          });
-          console.error("Chat error:", error);
-        } finally {
-          setIsAnalyzing(false);
-        }
-        return; // Exit early for chat case
-
       default: // extract-text as default
         url = `/documents/process`;
         formData.append('operation', 'extract_text');
@@ -671,8 +623,7 @@ const PublicInteract = () => {
       formData.append('max_tokens', maxTokens.toString());
 
       // For continued chat, we use the chat endpoint
-      const url = `/chat`;
-
+      const url = `/api/proxy/chat-with-document`;
       // Use the main API base URL (Flask backend)
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       // Use chatWithAI function instead of direct fetch
