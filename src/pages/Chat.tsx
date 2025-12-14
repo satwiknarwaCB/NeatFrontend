@@ -17,7 +17,8 @@ import {
   User
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { chatWithAI, getConversations, getConversation, createConversation, deleteConversation } from "@/services/legalApi";
+import { getConversations, getConversation, createConversation, deleteConversation } from "@/services/legalApi";
+import { chatWithAI } from "@/services/legalChatbotApi";
 
 interface Message {
   id: string;
@@ -207,7 +208,7 @@ const Chat = () => {
       // Get AI response
       const response = await chatWithAI(
         input,
-        "general",
+        "General Chat",
         currentConversation?.id || "default"
       );
 

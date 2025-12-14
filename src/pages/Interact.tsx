@@ -11,7 +11,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, Cell } from 'recharts';
-import { exportReport, processDocuments, chatWithAI } from '@/services/legalApi';
+import { exportReport } from '@/services/legalApi';
+import { processDocuments, extractText, summarizeDocuments, analyzeClauses, assessRisks, extractChronology, classifyDocument } from '@/services/documentAnalysisApi';
+import { chatWithAI } from '@/services/legalChatbotApi';
 import { Slider } from "@/components/ui/slider";
 
 // Types for our API responses
@@ -443,53 +445,59 @@ const Interact = () => {
     });
 
     // Build URL with query parameters based on analysis type
-    // Updated to use proxy endpoints instead of unified /api/documents/process
+    // Updated to use correct API endpoints with query parameters for Option 1
+    let fullUrl = '';
     switch (analysisType) {
       case "summarize":
-        // Use the proxy endpoint for summarization
-        url = `/api/proxy/summarize-documents`;
-        // Add summary parameters as form data
-        formData.append('summary_instructions', summaryInstructions);
-        formData.append('summary_type', summaryType);
-        formData.append('max_length', maxLength.toString());
-        formData.append('include_key_points', includeKeyPoints.toString());
+        // Use the correct endpoint for summarization with query parameters
+        const summarizeParams = new URLSearchParams({
+          summary_instructions: summaryInstructions,
+          summary_type: summaryType,
+          max_length: maxLength.toString(),
+          include_key_points: includeKeyPoints.toString(),
+          compare_documents: "false"
+        });
+        fullUrl = `/api/summarize-documents/?${summarizeParams.toString()}`;
         break;
 
       case "clauses":
-        url = `/api/proxy/analyze-clauses`;
+        fullUrl = `/api/analyze-clauses/`;
         break;
 
       case "risk":
-        url = `/api/proxy/assess-risks`;
-        formData.append('document_type', documentType);
-        formData.append('assessment_focus', assessmentFocus);
-        formData.append('include_recommendations', includeRecommendations.toString());
-        formData.append('risk_categories', riskCategories);
-        formData.append('custom_instructions', customInstructions);
+        const riskParams = new URLSearchParams({
+          document_type: documentType,
+          assessment_focus: assessmentFocus,
+          include_recommendations: includeRecommendations.toString(),
+          risk_categories: riskCategories
+        });
+        fullUrl = `/api/assess-risks/?${riskParams.toString()}`;
         break;
 
       case "chronology":
-        url = `/api/proxy/extract-chronology`;
-        formData.append('document_date', documentDate);
+        const chronologyParams = new URLSearchParams({
+          document_date: documentDate
+        });
+        fullUrl = `/api/extract-chronology/?${chronologyParams.toString()}`;
         break;
 
       case "classify":
-        url = `/api/proxy/classify-document`;
-        formData.append('document_type_hint', documentTypeHint);
-        formData.append('classification_focus', classificationFocus);
+        const classifyParams = new URLSearchParams({
+          document_type_hint: documentTypeHint,
+          classification_focus: classificationFocus
+        });
+        fullUrl = `/api/classify-document/?${classifyParams.toString()}`;
         break;
 
       case "chat":
-        url = `/api/proxy/chat-with-document`;
-        // Add user_message and other chat options as form data
-        formData.append('user_message', userMessage);
-        formData.append('mode', chatMode);
-        formData.append('temperature', temperature.toString());
-        formData.append('max_tokens', maxTokens.toString());
+        const chatParams = new URLSearchParams({
+          user_message: userMessage
+        });
+        fullUrl = `/api/chat-with-document/?${chatParams.toString()}`;
         break;
 
       default: // extract-text as default
-        url = `/api/proxy/extract-text`;
+        fullUrl = `/api/extract-text/`;
     }    try {
       // Add a timeout to the fetch request
       const controller = new AbortController();
@@ -497,9 +505,26 @@ const Interact = () => {
 
       let data;
       if (analysisType !== "chat") {
-        // Use the new processDocuments function instead of direct fetch for document operations
-        data = await processDocuments(formData);
+        // Direct file to analysis - Option 1
+        const response = await fetch(fullUrl, {
+          method: 'POST',
+          body: formData
+        });
         clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const error: any = new Error('API Error');
+          error.status = response.status;
+          error.statusText = response.statusText;
+          try {
+            error.data = await response.json();
+          } catch (e) {
+            error.data = null;
+          }
+          throw error;
+        }
+        
+        data = await response.json();
       } else {
         // For chat operations, use the chatWithAI service function
         const message = formData.get('message') as string || userMessage;
@@ -513,7 +538,7 @@ const Interact = () => {
       // Debug logging
       console.log("API Response Data:", data);
       console.log("Analysis Type:", analysisType);
-      console.log("Summary field in response:", data.summary);
+      console.log("Summary field in response:", data.summary || (data.summaries && data.summaries[0] ? data.summaries[0].summary : null));
 
       // Handle the real API response structure for summarize endpoint
       let summaryValue = "";
@@ -521,35 +546,24 @@ const Interact = () => {
       // Check if this is the summarize endpoint response with summaries array
       if (analysisType === "summarize" && data.summaries && Array.isArray(data.summaries) && data.summaries.length > 0) {
         const firstSummary = data.summaries[0];
-        // The summary field might be a JSON string, so parse it if needed
-        let summaryContent = firstSummary.summary;
-        if (typeof summaryContent === 'string' && summaryContent.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(summaryContent);
-            // Extract just the summary text, not the entire JSON
-            summaryValue = parsed.summary || JSON.stringify(parsed);
-          } catch (e) {
-            // If parsing fails, try to extract just the summary text from the string
-            const match = summaryContent.match(/"summary":\s*"([^"]+(?:\\.[^"]*)*)"/s);
-            summaryValue = match ? match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : summaryContent;
-          }
-        } else {
-          summaryValue = summaryContent;
-        }
+        // Access the summary field directly as per backend structure
+        summaryValue = firstSummary.summary || "";
       } else {
-        summaryValue = data.summary || "";
+        // Fallback to direct summary access
+        // Fallback to direct summary access
+          summaryValue = data.summary || "";
       }
 
       // Format the response based on the API structure and analysis type
       result = {
-        analysis: data.response || data.analysis || summaryValue || data.raw_text ||
+        analysis: data.assistant_message || data.response || data.analysis || summaryValue || data.raw_text ||
           (analysisType === "chronology" && data.timeline?.events ? "" : "Analysis completed successfully."),
         sources: files.map(f => ({ file_name: f.name })),
         tokens_used: data.tokens_used || data.processing_metadata?.tokens_used || 0,
         processing_time: data.processing_time || data.processing_metadata?.processing_time || data.total_processing_time || 0,
         analysis_id: data.analysis_id || data.processing_metadata?.document_id || `analysis-${Date.now()}`,
         summary: summaryValue,
-        response: data.response || data.analysis || summaryValue || data.raw_text || "",
+        response: data.assistant_message || data.response || data.analysis || summaryValue || data.raw_text || "",
         // Include all specific fields for each analysis type
         raw_text: data.raw_text,
         raw_text_length: data.raw_text_length,
@@ -558,7 +572,7 @@ const Interact = () => {
         timeline: data.timeline,
         classification: data.classification,
         events: data.events,
-        clauses: data.clauses,
+        clauses: data.clause_analysis?.clauses,
         chat_history: data.chat_history,
         // Extract text specific fields
         heading: data.heading,
@@ -625,7 +639,7 @@ const Interact = () => {
 
       const newAssistantMessage = {
         role: 'assistant' as const,
-        content: chatData.response || "I've analyzed your document and can help answer questions about it.",
+        content: chatData.assistant_message || "I've analyzed your document and can help answer questions about it.",
         timestamp: new Date().toISOString()
       };
 
@@ -639,8 +653,8 @@ const Interact = () => {
           ...analysisResult,
           chat_history: newChatHistory,
           // Update the analysis field with the latest response for proper display
-          analysis: chatData.response || "I've analyzed your document and can help answer questions about it.",
-          response: chatData.response || "I've analyzed your document and can help answer questions about it."
+          analysis: chatData.assistant_message || "I've analyzed your document and can help answer questions about it.",
+          response: chatData.assistant_message || "I've analyzed your document and can help answer questions about it."
         };
         setAnalysisResult(updatedResult);
       }

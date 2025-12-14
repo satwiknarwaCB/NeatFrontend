@@ -1,5 +1,6 @@
 // Legal AId API Service
-import { apiClient } from '../lib/api';
+import { legalChatbotApiClient } from './legalChatbotApi';
+import { documentAnalysisApiClient } from './documentAnalysisApi';
 
 // Types
 export interface ChatMessage {
@@ -87,8 +88,8 @@ export interface SessionStats {
 export const createSession = async (): Promise<string> => {
   try {
     console.log('Creating new session...');
-    // Call the session creation endpoint WITH /api prefix
-    const response = await apiClient.post<null, { chat_session_id: string }>('/api/chat/new', null);
+    // Call the session creation endpoint - using the correct endpoint from documentation
+    const response = await legalChatbotApiClient.post<null, { chat_session_id: string }>('/chat/new', null);
     console.log('Session creation response:', response);
     if (!response || !response.chat_session_id) {
       throw new Error('Invalid session creation response');
@@ -132,8 +133,8 @@ export const chatWithAI = async (
       enable_pii_detection: true
     });
     
-    // Match the ChatRequest model expected by the backend WITH /api prefix
-    const response = await apiClient.post<any, any>('/api/chat', {
+    // Match the ChatRequest model expected by the backend - using the correct endpoint from documentation
+    const response = await legalChatbotApiClient.post<any, any>('/chat', {
       message: message,
       session_id: sessionId, // Use the actual session ID
       chatbot_mode: chatbotMode,
@@ -236,7 +237,7 @@ export const deleteConversation = async (conversationId: string): Promise<boolea
   }
 };
 
-// Draft a legal document WITH /api prefix
+// Draft a legal document - using the correct endpoint from documentation
 export const draftDocument = async (data: DocumentDraft): Promise<DraftResponse> => {
   try {
     // First, ensure we have a valid session
@@ -275,7 +276,7 @@ export const draftDocument = async (data: DocumentDraft): Promise<DraftResponse>
     
     console.log('Sending draft request with data:', requestData);
     
-    const response = await apiClient.post<DocumentDraft, DraftResponse>('/api/drafting/generate', requestData);
+    const response = await legalChatbotApiClient.post<DocumentDraft, DraftResponse>('/drafting/generate', requestData);
     return response;
   } catch (error) {
     console.error('Failed to draft document:', error);
@@ -289,7 +290,7 @@ export const draftDocument = async (data: DocumentDraft): Promise<DraftResponse>
   }
 };
 
-// Upload documents for RAG WITH /api prefix
+// Upload documents for RAG - using the correct endpoint from documentation
 export const uploadDocuments = async (files: Array<{ name: string; content: string }>): Promise<UploadResponse> => {
   try {
     // Always create a new session to ensure we have a valid one
@@ -298,7 +299,7 @@ export const uploadDocuments = async (files: Array<{ name: string; content: stri
     console.log('New session created:', sessionId);
     localStorage.setItem('backend_session_id', sessionId);
     
-    const response = await apiClient.post<any, UploadResponse>('/api/documents/process', {
+    const response = await legalChatbotApiClient.post<any, UploadResponse>('/documents/upload', {
       files: files,
       session_id: sessionId
     });
@@ -310,23 +311,16 @@ export const uploadDocuments = async (files: Array<{ name: string; content: stri
   }
 };
 
-// Health check WITH /api prefix
+// Health check - using the correct endpoint from documentation
 export const healthCheck = async (): Promise<{ status: string; message: string }> => {
   try {
-    const response = await apiClient.get<{ status: string; message: string }>('/health');
+    const response = await legalChatbotApiClient.get<{ status: string; message: string }>('/status');
     return response;
   } catch (error) {
     console.error('Health check failed:', error);
     throw error;
   }
 };
-
-export interface ConversationHistory {
-  id: string;
-  history: ChatMessage[];
-  mode: string;
-  title: string;
-}
 
 export interface DocumentType {
   id: string;
@@ -346,10 +340,10 @@ export interface LegalClause {
   description: string;
 }
 
-// Get available document types WITH /api prefix
+// Get available document types - using the correct endpoint from documentation
 export const getDocumentTypes = async (): Promise<DocumentType[]> => {
   try {
-    const response = await apiClient.get<{ document_types: DocumentType[] }>('/api/drafting/document-types');
+    const response = await legalChatbotApiClient.get<{ document_types: DocumentType[] }>('/drafting/document-types');
     return response.document_types || [];
   } catch (error) {
     console.error('Failed to fetch document types:', error);
@@ -357,10 +351,10 @@ export const getDocumentTypes = async (): Promise<DocumentType[]> => {
   }
 };
 
-// Get available drafting styles WITH /api prefix
+// Get available drafting styles - using the correct endpoint from documentation
 export const getDraftingStyles = async (): Promise<DraftingStyle[]> => {
   try {
-    const response = await apiClient.get<{ drafting_styles: DraftingStyle[] }>('/api/drafting/styles');
+    const response = await legalChatbotApiClient.get<{ drafting_styles: DraftingStyle[] }>('/drafting/styles');
     return response.drafting_styles || [];
   } catch (error) {
     console.error('Failed to fetch drafting styles:', error);
@@ -368,10 +362,10 @@ export const getDraftingStyles = async (): Promise<DraftingStyle[]> => {
   }
 };
 
-// Get available legal clauses WITH /api prefix
+// Get available legal clauses - using the correct endpoint from documentation
 export const getAvailableClauses = async (): Promise<LegalClause[]> => {
   try {
-    const response = await apiClient.get<{ clauses: LegalClause[] }>('/api/drafting/clauses');
+    const response = await legalChatbotApiClient.get<{ clauses: LegalClause[] }>('/drafting/clauses');
     return response.clauses || [];
   } catch (error) {
     console.error('Failed to fetch legal clauses:', error);
@@ -379,13 +373,13 @@ export const getAvailableClauses = async (): Promise<LegalClause[]> => {
   }
 };
 
-// Export report in specified format WITH /api prefix
+// Export report in specified format - using the correct endpoint from documentation
 export const exportReport = async (
   content: any,
   format: 'pdf' | 'docx' | 'txt' = 'pdf'
 ): Promise<Blob> => {
   try {
-    const response = await apiClient.postRaw('/api/drafting/export', {
+    const response = await legalChatbotApiClient.postRaw('/drafting/export', {
       format: format,
       content: content
     });
@@ -396,10 +390,10 @@ export const exportReport = async (
   }
 };
 
-// Process documents with FormData WITH /api prefix
-export const processDocuments = async (formData: FormData): Promise<any> => {
+// Process documents with FormData - using the correct endpoint from documentation
+export const processDocuments = async (data: any): Promise<any> => {
   try {
-    const response = await apiClient.postFormData<any>('/api/documents/process', formData);
+    const response = await legalChatbotApiClient.post<any, any>('/documents/process', data);
     return response;
   } catch (error) {
     console.error('Failed to process documents:', error);
@@ -417,10 +411,10 @@ export const processDocuments = async (formData: FormData): Promise<any> => {
   }
 };
 
-// Get chat history for current user
+// Get chat history for current user - using the correct endpoint from documentation
 export const getChatHistory = async (): Promise<ChatSession[]> => {
   try {
-    const response = await apiClient.get<ChatSession[]>('/api/chat/history');
+    const response = await legalChatbotApiClient.get<ChatSession[]>('/chat/history');
     return response || [];
   } catch (error) {
     console.error('Failed to fetch chat history:', error);
@@ -428,10 +422,10 @@ export const getChatHistory = async (): Promise<ChatSession[]> => {
   }
 };
 
-// Get specific chat session messages
+// Get specific chat session messages - using the correct endpoint from documentation
 export const getChatSession = async (sessionId: string): Promise<ChatHistoryItem[]> => {
   try {
-    const response = await apiClient.get<ChatHistoryItem[]>(`/api/chat/${sessionId}`);
+    const response = await legalChatbotApiClient.get<ChatHistoryItem[]>(`/chat/${sessionId}`);
     return response || [];
   } catch (error) {
     console.error(`Failed to fetch chat session ${sessionId}:`, error);
@@ -439,10 +433,10 @@ export const getChatSession = async (sessionId: string): Promise<ChatHistoryItem
   }
 };
 
-// Delete a chat session
+// Delete a chat session - using the correct endpoint from documentation
 export const deleteChatSession = async (sessionId: string): Promise<boolean> => {
   try {
-    await apiClient.delete(`/api/chat/${sessionId}`);
+    await legalChatbotApiClient.delete(`/chat/${sessionId}`);
     return true;
   } catch (error) {
     console.error(`Failed to delete chat session ${sessionId}:`, error);
@@ -450,10 +444,10 @@ export const deleteChatSession = async (sessionId: string): Promise<boolean> => 
   }
 };
 
-// Start a new chat session
+// Start a new chat session - using the correct endpoint from documentation
 export const startNewChatSession = async (): Promise<ChatSession> => {
   try {
-    const response = await apiClient.post<null, ChatSession>('/api/chat/new', null);
+    const response = await legalChatbotApiClient.post<null, ChatSession>('/chat/new', null);
     return response;
   } catch (error) {
     console.error('Failed to start new chat session:', error);
@@ -461,13 +455,13 @@ export const startNewChatSession = async (): Promise<ChatSession> => {
   }
 };
 
-// Download a drafted document
+// Download a drafted document - using the correct endpoint from documentation
 export const downloadDocument = async (
   format: 'txt' | 'pdf' | 'docx',
   content: any
 ): Promise<Blob> => {
   try {
-    const response = await apiClient.postRaw(`/api/drafting/download/${format}`, content);
+    const response = await legalChatbotApiClient.postRaw(`/drafting/download/${format}`, content);
     return response;
   } catch (error) {
     console.error(`Failed to download document in ${format} format:`, error);
@@ -475,10 +469,10 @@ export const downloadDocument = async (
   }
 };
 
-// Get embeddings status
+// Get embeddings status - using the correct endpoint from documentation
 export const getEmbeddingsStatus = async (): Promise<any> => {
   try {
-    const response = await apiClient.get<any>('/api/status');
+    const response = await legalChatbotApiClient.get<any>('/status');
     return response;
   } catch (error) {
     console.error('Failed to fetch embeddings status:', error);
@@ -486,10 +480,10 @@ export const getEmbeddingsStatus = async (): Promise<any> => {
   }
 };
 
-// Get session statistics
+// Get session statistics - using the correct endpoint from documentation
 export const getSessionStats = async (): Promise<SessionStats> => {
   try {
-    const response = await apiClient.get<SessionStats>('/api/session/stats');
+    const response = await legalChatbotApiClient.get<SessionStats>('/session/stats');
     return response;
   } catch (error) {
     console.error('Failed to fetch session stats:', error);
@@ -497,10 +491,10 @@ export const getSessionStats = async (): Promise<SessionStats> => {
   }
 };
 
-// Reset user session
+// Reset user session - using the correct endpoint from documentation
 export const resetSession = async (): Promise<boolean> => {
   try {
-    await apiClient.post<null, any>('/api/session/reset', null);
+    await legalChatbotApiClient.post<null, any>('/session/reset', null);
     // Clear local storage session ID as well
     localStorage.removeItem('backend_session_id');
     return true;

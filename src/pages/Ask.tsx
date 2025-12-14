@@ -42,7 +42,8 @@ import { cn } from "@/lib/utils";
 
 import { LegalResearchResponse } from "@/types/api";
 import { useExperienceMode } from "@/contexts/ExperienceModeContext";
-import { chatWithAI, getConversations, getConversation, createConversation, deleteConversation } from "@/services/legalApi";
+import { getConversations, getConversation, createConversation, deleteConversation } from "@/services/legalApi";
+import { chatWithAI } from "@/services/legalChatbotApi";
 import { Conversation as ApiConversation } from "@/services/legalApi";
 
 interface Message {

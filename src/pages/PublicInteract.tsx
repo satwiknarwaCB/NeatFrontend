@@ -12,7 +12,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, Cell } from 'recharts';
-import { exportReport, processDocuments, chatWithAI } from '@/services/legalApi';
+import { exportReport } from '@/services/legalApi';
+import { processDocuments, extractText, summarizeDocuments, analyzeClauses, assessRisks, extractChronology, classifyDocument } from '@/services/documentAnalysisApi';
+import { chatWithAI } from '@/services/legalChatbotApi';
 import { Slider } from "@/components/ui/slider";
 
 // Types for our API responses
@@ -55,8 +57,8 @@ interface DocumentAnalysisResult {
     suggested_action?: string;
   }>;
   classification?: {
-    type: string;
-    confidence: number;
+    document_type: string;
+    importance: number;
     subject: string;
   };
   summary?: string;
@@ -263,9 +265,9 @@ const PublicInteract = () => {
         if (analysisResult.classification) {
           reportContent += `\nDocument Classification:\n`;
           reportContent += `=======================\n`;
-          reportContent += `Type: ${analysisResult.classification.type}\n`;
+          reportContent += `Type: ${analysisResult.classification.document_type}\n`;
           reportContent += `Subject: ${analysisResult.classification.subject}\n`;
-          reportContent += `Confidence: ${(analysisResult.classification.confidence * 100).toFixed(0)}%\n`;
+          reportContent += `Importance: ${(analysisResult.classification.importance * 100).toFixed(0)}%\n`;
         }
 
         // Add sources
@@ -435,8 +437,6 @@ const PublicInteract = () => {
     setIsAnalyzing(true);
     let result: DocumentAnalysisResult | null = null;
     let response: Response;
-    let url = "";
-
     // Create FormData for file upload
     const formData = new FormData();
     files.forEach((fileObj) => {
@@ -446,60 +446,103 @@ const PublicInteract = () => {
     });
 
     // Build URL with query parameters based on analysis type
-    // Updated to use new backend endpoints instead of proxy endpoints
+    // Updated to use correct API endpoints with query parameters for Option 1
+    let fullUrl = '';
     switch (analysisType) {
       case "summarize":
-        // For document processing, we'll use the /documents/process endpoint
-        // and include summary instructions in the request
-        url = `/api/proxy/summarize-documents`;
-        // Add summary parameters as form data
-        formData.append('summary_instructions', summaryInstructions);
-        formData.append('summary_type', summaryType);
-        formData.append('max_length', maxLength.toString());
-        formData.append('include_key_points', includeKeyPoints.toString());        break;
+        // Use the correct endpoint for summarization with query parameters
+        const summarizeParams = new URLSearchParams({
+          summary_instructions: summaryInstructions,
+          summary_type: summaryType,
+          max_length: maxLength.toString(),
+          include_key_points: includeKeyPoints.toString(),
+          compare_documents: "false"
+        });
+        fullUrl = `/api/summarize-documents/?${summarizeParams.toString()}`;
+        break;
 
       case "clauses":
-        url = `/api/proxy/analyze-clauses`;
+        fullUrl = `/api/analyze-clauses/`;
         break;
+
       case "risk":
-        url = `/api/proxy/assess-risks`;
-        formData.append('document_type', documentType);
-        formData.append('assessment_focus', assessmentFocus);
-        formData.append('include_recommendations', includeRecommendations.toString());
-        formData.append('risk_categories', riskCategories);
-        formData.append('custom_instructions', customInstructions);
-        break;      case "chronology":
-        url = `/api/proxy/extract-chronology`;
-        formData.append('document_date', documentDate);
-        break;      case "classify":
-        url = `/api/proxy/classify-document`;
-        formData.append('document_type_hint', documentTypeHint);
-        formData.append('classification_focus', classificationFocus);
-        break;      case "chat":
-        url = `/api/proxy/chat-with-document`;
-        // Add user_message and other chat options as form data
-        formData.append('user_message', userMessage);
-        formData.append('mode', chatMode);
-        formData.append('temperature', temperature.toString());
-        formData.append('max_tokens', maxTokens.toString());
+        const riskParams = new URLSearchParams({
+          document_type: documentType,
+          assessment_focus: assessmentFocus,
+          include_recommendations: includeRecommendations.toString(),
+          risk_categories: riskCategories
+        });
+        fullUrl = `/api/assess-risks/?${riskParams.toString()}`;
         break;
+
+      case "chronology":
+        const chronologyParams = new URLSearchParams({
+          document_date: documentDate
+        });
+        fullUrl = `/api/extract-chronology/?${chronologyParams.toString()}`;
+        break;
+
+      case "classify":
+        const classifyParams = new URLSearchParams({
+          document_type_hint: documentTypeHint,
+          classification_focus: classificationFocus
+        });
+        fullUrl = `/api/classify-document/?${classifyParams.toString()}`;
+        break;
+
+      case "chat":
+        const chatParams = new URLSearchParams({
+          user_message: userMessage,
+          mode: chatMode,
+          temperature: temperature.toString(),
+          max_tokens: maxTokens.toString()
+        });
+        fullUrl = `/api/chat-with-document/?${chatParams.toString()}`;
+        break;
+
       default: // extract-text as default
-        url = `/documents/process`;
-        formData.append('operation', 'extract_text');
+        fullUrl = `/api/extract-text/`;
     }    try {
       // Add a timeout to the fetch request
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      // Use the new processDocuments function instead of direct fetch
-      const processData = await processDocuments(formData);
-      // Since processDocuments already returns parsed data, we don't need to parse it again
-      const data = processData;
+      let data;
+      if (analysisType !== "chat") {
+        // Direct file to analysis - Option 1
+        const response = await fetch(fullUrl, {
+          method: 'POST',
+          body: formData
+        });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const error: any = new Error('API Error');
+          error.status = response.status;
+          error.statusText = response.statusText;
+          try {
+            error.data = await response.json();
+          } catch (e) {
+            error.data = null;
+          }
+          throw error;
+        }
+        
+        data = await response.json();
+      } else {
+        // For chat operations, use the chatWithAI service function
+        const message = formData.get('message') as string || userMessage;
+        const mode = formData.get('mode') as 'document' | 'layman' || chatMode;
+        // Map old mode values to new chatbotMode values
+        const chatbotMode = chatMode;
+        data = await chatWithAI(message, chatbotMode);
+        clearTimeout(timeoutId);
+      }
 
       // Debug logging
       console.log("API Response Data:", data);
       console.log("Analysis Type:", analysisType);
-      console.log("Summary field in response:", data.summary);
+      console.log("Summary field in response:", data.summary || (data.summaries && data.summaries[0] ? data.summaries[0].summary : null));
 
       // Handle the real API response structure for summarize endpoint
       let summaryValue = "";
@@ -507,35 +550,24 @@ const PublicInteract = () => {
       // Check if this is the summarize endpoint response with summaries array
       if (analysisType === "summarize" && data.summaries && Array.isArray(data.summaries) && data.summaries.length > 0) {
         const firstSummary = data.summaries[0];
-        // The summary field might be a JSON string, so parse it if needed
-        let summaryContent = firstSummary.summary;
-        if (typeof summaryContent === 'string' && summaryContent.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(summaryContent);
-            // Extract just the summary text, not the entire JSON
-            summaryValue = parsed.summary || JSON.stringify(parsed);
-          } catch (e) {
-            // If parsing fails, try to extract just the summary text from the string
-            const match = summaryContent.match(/"summary":\s*"([^"]+(?:\\.[^"]*)*)"/s);
-            summaryValue = match ? match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : summaryContent;
-          }
-        } else {
-          summaryValue = summaryContent;
-        }
+        // Access the summary field directly as per backend structure
+        summaryValue = firstSummary.summary || "";
       } else {
-        summaryValue = data.summary || "";
+        // Fallback to direct summary access
+        // Fallback to direct summary access
+          summaryValue = data.summary || "";
       }
 
       // Format the response based on the API structure and analysis type
       result = {
-        analysis: data.response || data.analysis || summaryValue || data.raw_text || 
+        analysis: data.assistant_message || data.response || data.analysis || summaryValue || data.raw_text || 
                  (analysisType === "chronology" && data.timeline?.events ? "" : "Analysis completed successfully."),
         sources: files.map(f => ({ file_name: f.name })),
         tokens_used: data.tokens_used || data.processing_metadata?.tokens_used || 0,
         processing_time: data.processing_time || data.processing_metadata?.processing_time || data.total_processing_time || 0,
         analysis_id: data.analysis_id || data.processing_metadata?.document_id || `analysis-${Date.now()}`,
         summary: summaryValue,
-        response: data.response || data.analysis || summaryValue || data.raw_text || "",
+        response: data.assistant_message || data.response || data.analysis || summaryValue || data.raw_text || "",
         // Include all specific fields for each analysis type
         raw_text: data.raw_text,
         raw_text_length: data.raw_text_length,
@@ -544,7 +576,7 @@ const PublicInteract = () => {
         timeline: data.timeline,
         classification: data.classification,
         events: data.events,
-        clauses: data.clauses,
+        clauses: data.clause_analysis?.clauses,
         chat_history: data.chat_history,
         // Extract text specific fields
         heading: data.heading,
@@ -617,21 +649,34 @@ const PublicInteract = () => {
         }
       });
 
-      // Add user_message and other chat options as form data
-      formData.append('message', newMessage);      formData.append('mode', chatMode);
-      formData.append('temperature', temperature.toString());
-      formData.append('max_tokens', maxTokens.toString());
+      // For chat, we use the chat endpoint with query parameters (Option 1)
+      const chatParams = new URLSearchParams({
+        user_message: newMessage,
+        mode: chatMode,
+        temperature: temperature.toString(),
+        max_tokens: maxTokens.toString()
+      });
+      const fullUrl = `/api/chat-with-document/?${chatParams.toString()}`;
 
-      // For continued chat, we use the chat endpoint
-      const url = `/api/proxy/chat-with-document`;
-      // Use the main API base URL (Flask backend)
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      // Use chatWithAI function instead of direct fetch
-      // For backward compatibility, if chatMode is one of the old values, map it to new values
-      const chatbotMode = chatMode;
-      const chatData = await chatWithAI(newMessage, chatbotMode);
-      // Since chatWithAI already returns parsed data, we don't need to parse it again
-      const data = chatData;
+      // Direct file to analysis - Option 1 for chat
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error: any = new Error('API Error');
+        error.status = response.status;
+        error.statusText = response.statusText;
+        try {
+          error.data = await response.json();
+        } catch (e) {
+          error.data = null;
+        }
+        throw error;
+      }
+
+      const data = await response.json();
 
       // Add to chat history with proper typing
       const newUserMessage = {
@@ -642,7 +687,7 @@ const PublicInteract = () => {
 
       const newAssistantMessage = {
         role: 'assistant' as const,
-        content: data.response || "I've analyzed your document and can help answer questions about it.",
+        content: data.assistant_message || "I've analyzed your document and can help answer questions about it.",
         timestamp: new Date().toISOString()
       };
 
@@ -656,8 +701,8 @@ const PublicInteract = () => {
           ...analysisResult,
           chat_history: newChatHistory,
           // Update the analysis field with the latest response for proper display
-          analysis: data.response || "I've analyzed your document and can help answer questions about it.",
-          response: data.response || "I've analyzed your document and can help answer questions about it."
+          analysis: data.assistant_message || "I've analyzed your document and can help answer questions about it.",
+          response: data.assistant_message || "I've analyzed your document and can help answer questions about it."
         };
         setAnalysisResult(updatedResult);
       }
@@ -1730,16 +1775,16 @@ const PublicInteract = () => {
                           <div className="p-4 bg-muted rounded-lg">
                             <div className="flex justify-between items-center">
                               <div>
-                                <h4 className="font-semibold text-lg">{analysisResult.classification.type}</h4>
+                                <h4 className="font-semibold text-lg">{analysisResult.classification.document_type}</h4>
                                 <p className="text-sm text-muted-foreground mt-1">{analysisResult.classification.subject}</p>
                               </div>
                               <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm">
-                                {(analysisResult.classification.confidence * 100).toFixed(0)}% Confidence
+                                {(analysisResult.classification.importance * 100).toFixed(0)}% Importance
                               </span>
                             </div>
-                            {analysisResult.classification.confidence < 0.7 && (
+                            {analysisResult.classification.importance < 0.7 && (
                               <p className="text-xs text-muted-foreground mt-2 italic">
-                                Note: Low confidence score. Consider providing more context for better classification.
+                                Note: Low importance score. Consider providing more context for better classification.
                               </p>
                             )}
                           </div>

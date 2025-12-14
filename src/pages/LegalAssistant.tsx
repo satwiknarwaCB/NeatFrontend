@@ -30,7 +30,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { chatWithAI, getConversations, getConversation, createConversation, deleteConversation, getEmbeddingsStatus, getSessionStats, resetSession } from "@/services/legalApi";
+import { getConversations, getConversation, createConversation, deleteConversation, getEmbeddingsStatus, getSessionStats, resetSession } from "@/services/legalApi";
+import { chatWithAI } from "@/services/legalChatbotApi";
 import { Conversation as ApiConversation } from "@/services/legalApi";
 import { useAuth } from "@/hooks/useAuth";
 
