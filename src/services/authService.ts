@@ -167,21 +167,31 @@ class AuthService {
   // Login user
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     try {
-      const response = await apiClient.post<LoginRequest, AuthResponse>(
+      const response = await apiClient.post<LoginRequest, any>(
         '/auth/login',
         credentials
       );
       
-      // Token expires in 1 hour (3600 seconds)
-      this.setToken(response.token, 3600);
-      this.setUser(response.user);
+      // Backend returns 'access_token', convert to our AuthResponse format
+      const token = response.access_token || response.token;
+      const user = response.user;
       
-      // Also store role in localStorage for quick access
-      if (response.user.role) {
-        localStorage.setItem('userRole', response.user.role);
+      if (!token || !user) {
+        throw new Error('Invalid login response: missing token or user');
       }
       
-      return response;
+      // Token expires in 1 hour (3600 seconds)
+      this.setToken(token, 3600);
+      this.setUser(user);
+      
+      // Also store role in localStorage for quick access
+      if (user.role) {
+        localStorage.setItem('userRole', user.role);
+      }
+      
+      console.log('Login successful, token stored:', token.substring(0, 20) + '...');
+      
+      return { user, token };
     } catch (error: any) {
       console.error('Login error:', error);
       // Re-throw the error with a more user-friendly message
@@ -198,21 +208,31 @@ class AuthService {
   // Register user
   async register(credentials: RegisterRequest): Promise<AuthResponse> {
     try {
-      const response = await apiClient.post<RegisterRequest, AuthResponse>(
+      const response = await apiClient.post<RegisterRequest, any>(
         '/auth/register',
         credentials
       );
       
-      // Token expires in 1 hour (3600 seconds)
-      this.setToken(response.token, 3600);
-      this.setUser(response.user);
+      // Backend returns 'access_token', convert to our AuthResponse format
+      const token = response.access_token || response.token;
+      const user = response.user;
       
-      // Also store role in localStorage for quick access
-      if (response.user.role) {
-        localStorage.setItem('userRole', response.user.role);
+      if (!token || !user) {
+        throw new Error('Invalid register response: missing token or user');
       }
       
-      return response;
+      // Token expires in 1 hour (3600 seconds)
+      this.setToken(token, 3600);
+      this.setUser(user);
+      
+      // Also store role in localStorage for quick access
+      if (user.role) {
+        localStorage.setItem('userRole', user.role);
+      }
+      
+      console.log('Registration successful, token stored:', token.substring(0, 20) + '...');
+      
+      return { user, token };
     } catch (error: any) {
       console.error('Registration error:', error);
       // Re-throw the error with a more user-friendly message

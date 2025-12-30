@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,7 +26,8 @@ import {
     RefreshCw,
     Activity,
     Database,
-    BarChart3
+    BarChart3,
+    LogOut
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ interface Message {
 
 const LegalAssistant = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const [conversations, setConversations] = useState<ApiConversation[]>([]);
     const [currentConversation, setCurrentConversation] = useState<ApiConversation | null>(null);
@@ -51,12 +53,78 @@ const LegalAssistant = () => {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [responseMode, setResponseMode] = useState<"Hybrid (Smart)" | "Document Only" | "General Chat" | "Layman Explanation">("General Chat");
+    const [chatSessionId, setChatSessionId] = useState<string | null>(null);
     const { toast } = useToast();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Determine if we're in dashboard (authenticated) or public mode
+    const isDashboardMode = location.pathname.startsWith('/dashboard/');
+    const isPublicMode = location.pathname.startsWith('/public/');
+
+    // Debug logging
+    useEffect(() => {
+        console.log('Route mode detection:', {
+            pathname: location.pathname,
+            isDashboardMode,
+            isPublicMode,
+            user: !!user
+        });
+    }, [location.pathname, user]);
+
+    // Clear current conversation when user logs out while in dashboard mode
+    useEffect(() => {
+        if (!user && isDashboardMode) {
+            setCurrentConversation(null);
+            setMessages([]);
+            setTypingMessages({});
+            setCurrentLines({});
+            setChatSessionId(null);
+        }
+    }, [user]);
 
     // UI states
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isTyping, setIsTyping] = useState(false);
+
+    // Sidebar resizing state
+    const [sidebarWidth, setSidebarWidth] = useState(384); // Default 96 * 4 = 384px
+    const isResizingRef = useRef(false);
+
+    const startResizing = (e: React.MouseEvent) => {
+        isResizingRef.current = true;
+        document.addEventListener('mousemove', resize);
+        document.addEventListener('mouseup', stopResizing);
+        // Prevent text selection during drag
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'ew-resize';
+    };
+
+    const stopResizing = () => {
+        isResizingRef.current = false;
+        document.removeEventListener('mousemove', resize);
+        document.removeEventListener('mouseup', stopResizing);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+    };
+
+    const resize = (e: MouseEvent) => {
+        if (isResizingRef.current) {
+            // Calculate new width relative to the right edge of the screen
+            const newWidth = window.innerWidth - e.clientX;
+            // Min width 300px, Max width 800px (or roughly 50% of typical screen)
+            if (newWidth > 300 && newWidth < 800) {
+                setSidebarWidth(newWidth);
+            }
+        }
+    };
+
+    // Cleanup resize listeners on unmount
+    useEffect(() => {
+        return () => {
+            document.removeEventListener('mousemove', resize);
+            document.removeEventListener('mouseup', stopResizing);
+        };
+    }, []);
 
     // Additional data states
     const [sessionStats, setSessionStats] = useState<any>(null);
@@ -125,17 +193,48 @@ const LegalAssistant = () => {
 
     // Load conversations on mount
     useEffect(() => {
-        loadConversations();
-    }, []);
+        if (isDashboardMode && user) loadConversations();
+        if (isPublicMode) loadConversations();
+    }, [isDashboardMode, isPublicMode]);
+    // Cleanup localStorage on browser close for public mode
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            // Clear individual conversation messages on browser close
+            // This ensures conversations don't persist across browser sessions
+            if (isPublicMode) {
+                // Get all conversation IDs and clear their messages
+                const savedConversations = localStorage.getItem('legalAssistant_conversations');
+                if (savedConversations) {
+                    try {
+                        const conversations = JSON.parse(savedConversations);
+                        conversations.forEach((conv: any) => {
+                            localStorage.removeItem(`legalAssistant_messages_${conv.id}`);
+                        });
+                        // Clear the conversation list too for a clean start
+                        localStorage.removeItem('legalAssistant_conversations');
+                    } catch (e) {
+                        console.error('Failed to clear conversation messages:', e);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [isPublicMode]);
 
     // Load messages when conversation changes
     useEffect(() => {
-        if (currentConversation) {
+        if (currentConversation?.id) {
+            setChatSessionId(currentConversation.id);
             loadConversationMessages(currentConversation.id);
         } else {
             setMessages([]);
+            setChatSessionId(null);
         }
-    }, [currentConversation]);
+    }, [currentConversation?.id, isDashboardMode, isPublicMode, user]);
 
     // Scroll to bottom
     useEffect(() => {
@@ -152,7 +251,7 @@ const LegalAssistant = () => {
     // Load additional data (stats, embeddings status)
     useEffect(() => {
         loadAdditionalData();
-    }, []);
+    }, [isDashboardMode, isPublicMode, user]);
 
     const loadAdditionalData = async () => {
         try {
@@ -177,12 +276,73 @@ const LegalAssistant = () => {
 
     const loadConversations = async () => {
         try {
-            const fetchedConversations = await getConversations();
+            console.log('loadConversations called', { isDashboardMode, isPublicMode, user });
+            let fetchedConversations: ApiConversation[] = [];
+
+            // For dashboard mode (authenticated users), load from backend
+            if (isDashboardMode && user) {
+                console.log('Loading conversations from backend for user:', user.id);
+                const backendConversations = await getConversations();
+                console.log('Backend conversations:', backendConversations);
+                // Validate that backendConversations is an array
+                if (Array.isArray(backendConversations)) {
+                    fetchedConversations = backendConversations;
+                } else {
+                    console.warn('Backend conversations is not an array:', typeof backendConversations, backendConversations);
+                    fetchedConversations = [];
+                }
+            }
+            // For public mode (anonymous users), load from localStorage
+            else if (isPublicMode) {
+                console.log('Loading conversations from localStorage');
+                const savedConversations = localStorage.getItem('legalAssistant_conversations');
+                console.log('Saved conversations from localStorage:', savedConversations);
+                if (savedConversations) {
+                    try {
+                        const parsedConversations = JSON.parse(savedConversations);
+                        // Validate that parsedConversations is an array
+                        if (Array.isArray(parsedConversations)) {
+                            fetchedConversations = parsedConversations;
+                        } else {
+                            console.warn('Parsed conversations is not an array:', typeof parsedConversations, parsedConversations);
+                            fetchedConversations = [];
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse saved conversations:', e);
+                        fetchedConversations = [];
+                    }
+                }
+            }
+
+            console.log('Setting conversations:', fetchedConversations);
             setConversations(fetchedConversations);
 
-            if (!currentConversation && fetchedConversations.length > 0) {
-                setCurrentConversation(fetchedConversations[0]);
-            } else if (fetchedConversations.length === 0) {
+            // Set current conversation logic
+            if (fetchedConversations.length > 0) {
+                // If we don't have a current conversation, set the first one as current
+                if (!currentConversation) {
+                    console.log('Setting first conversation as current');
+                    setCurrentConversation(fetchedConversations[0]);
+                }
+                // If we do have a current conversation, make sure it's still in the list and update it if needed
+                else if (fetchedConversations.some(conv => conv.id === currentConversation.id)) {
+                    // Find the updated version of the current conversation
+                    const updatedCurrent = fetchedConversations.find(conv => conv.id === currentConversation.id);
+                    if (updatedCurrent) {
+                        // Check if the conversation data has changed
+                        if (JSON.stringify(updatedCurrent) !== JSON.stringify(currentConversation)) {
+                            console.log('Updating current conversation with fresh data');
+                            setCurrentConversation(updatedCurrent);
+                        }
+                    }
+                }
+                // If the current conversation is no longer in the list, set the first one as current
+                else {
+                    console.log('Current conversation no longer exists, setting first conversation as current');
+                    setCurrentConversation(fetchedConversations[0]);
+                }
+            } else {
+                console.log('No conversations found, creating new conversation');
                 createNewConversation();
             }
         } catch (error) {
@@ -197,18 +357,58 @@ const LegalAssistant = () => {
 
     const loadConversationMessages = async (conversationId: string) => {
         try {
-            const conversation = await getConversation(conversationId);
-            const formattedMessages: Message[] = conversation.history.map((msg, index) => ({
-                id: `${conversationId}-${index}`,
-                role: msg.role as "user" | "assistant",
-                content: msg.content,
-                timestamp: new Date()
-            }));
-            setMessages(formattedMessages);
+            // Guard against undefined conversation ID
+            if (!conversationId) {
+                console.error('Cannot load messages with undefined conversation ID');
+                setMessages([]);
+                return;
+            }
+
+            console.log('Loading conversation messages...', { conversationId, isDashboardMode, isPublicMode, user });
+            let conversationMessages: Message[] = [];
+
+            // For dashboard mode (authenticated users), load from backend
+            if (isDashboardMode && user) {
+                console.log('Loading from backend for user:', user.id);
+                const conversation = await getConversation(conversationId);
+                console.log('Backend conversation data:', conversation);
+                if (conversation && conversation.history) {
+                    conversationMessages = conversation.history.map((msg, index) => ({
+                        id: `${conversationId}-${index}`,
+                        role: msg.role as "user" | "assistant",
+                        content: msg.content,
+                        timestamp: new Date(msg.timestamp || new Date())
+                    }));
+                }
+            }
+            // For public mode (anonymous users), load from localStorage
+            else if (isPublicMode) {
+                console.log('Loading from localStorage...');
+                const savedMessages = localStorage.getItem(`legalAssistant_messages_${conversationId}`);
+                console.log('Saved messages from localStorage:', savedMessages);
+                if (savedMessages) {
+                    try {
+                        const parsedMessages = JSON.parse(savedMessages);
+                        // Validate that parsedMessages is an array
+                        if (Array.isArray(parsedMessages)) {
+                            conversationMessages = parsedMessages;
+                        } else {
+                            console.warn('Parsed messages is not an array:', typeof parsedMessages, parsedMessages);
+                            conversationMessages = [];
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse saved messages:', e);
+                        conversationMessages = [];
+                    }
+                }
+            }
+
+            console.log('Setting messages:', conversationMessages);
+            setMessages(conversationMessages);
 
             const initialTypingMessages: Record<string, string> = {};
             const initialCurrentLines: Record<string, number> = {};
-            formattedMessages.forEach(message => {
+            conversationMessages.forEach(message => {
                 if (message.role === "assistant") {
                     initialTypingMessages[message.id] = message.content;
                     const lines = message.content.split('\n');
@@ -229,10 +429,49 @@ const LegalAssistant = () => {
 
     const createNewConversation = async () => {
         try {
-            const newConversation = await createConversation("General Chat");
+            let newConversation: ApiConversation | null = null;
 
-            setConversations([newConversation, ...conversations]);
+            // For dashboard mode (authenticated users), create on backend
+            if (isDashboardMode && user) {
+                console.log('Creating new conversation for user:', user.id);
+                newConversation = await createConversation("General Chat");
+                console.log('New conversation created:', newConversation);
+                // Ensure the ID is properly set
+                if (newConversation && newConversation.id) {
+                    setChatSessionId(newConversation.id);
+                }
+            }
+            // For public mode (anonymous users), create locally
+            else if (isPublicMode) {
+                const conversationId = `local_${Date.now()}`;
+                newConversation = {
+                    id: conversationId,
+                    title: "New Conversation",
+                    lastMessage: "",
+                    timestamp: Date.now(),
+                    mode: "General Chat"
+                };
+            }
+
+            // Guard against undefined conversations
+            if (!newConversation) {
+                console.error("Failed to create new conversation");
+                return;
+            }
+
+            // Update conversations list
+            const updatedConversations = [newConversation, ...conversations];
+            setConversations(updatedConversations);
+
+            // For public mode, save to localStorage
+            if (isPublicMode) {
+                localStorage.setItem('legalAssistant_conversations', JSON.stringify(updatedConversations));
+            }
+
             setCurrentConversation(newConversation);
+            if (newConversation?.id) {
+                setChatSessionId(newConversation.id);
+            }
             setMessages([]);
             setInput("");
             setTypingMessages({});
@@ -253,24 +492,59 @@ const LegalAssistant = () => {
     };
 
     const selectConversation = (conversation: ApiConversation) => {
-        setCurrentConversation(conversation);
+        console.log('Selecting conversation:', conversation);
+        // Only update if it's actually a different conversation
+        if (!currentConversation || currentConversation.id !== conversation.id) {
+            console.log('Setting new conversation:', conversation);
+            // Set the chat session ID first
+            setChatSessionId(conversation.id);
+            setCurrentConversation(conversation);
+            // Load the messages for the selected conversation
+            loadConversationMessages(conversation.id);
+        }
     };
-
     const handleDeleteConversation = async (conversationId: string, e: React.MouseEvent) => {
         e.stopPropagation();
 
         try {
-            const success = await deleteConversation(conversationId);
+            // Guard against undefined conversation ID
+            if (!conversationId) {
+                console.error('Cannot delete conversation with undefined ID');
+                toast({
+                    title: "Error",
+                    description: "Cannot delete conversation: invalid ID",
+                    variant: "destructive"
+                });
+                return;
+            }
+
+            let success = true;
+
+            // For dashboard mode (authenticated users), delete from backend
+            if (isDashboardMode && user) {
+                console.log('Deleting conversation for user:', user.id, 'conversationId:', conversationId);
+                success = await deleteConversation(conversationId);
+            }
+
             if (success) {
                 const updatedConversations = conversations.filter(conv => conv.id !== conversationId);
                 setConversations(updatedConversations);
 
+                // For public mode, save to localStorage
+                if (isPublicMode) {
+                    localStorage.setItem('legalAssistant_conversations', JSON.stringify(updatedConversations));
+                    // Also remove the messages for this conversation
+                    localStorage.removeItem(`legalAssistant_messages_${conversationId}`);
+                }
+
                 if (currentConversation?.id === conversationId) {
                     if (updatedConversations.length > 0) {
                         setCurrentConversation(updatedConversations[0]);
+                        setChatSessionId(updatedConversations[0].id);
                     } else {
                         setCurrentConversation(null);
-                        createNewConversation();
+                        setMessages([]);
+                        setChatSessionId(null);
                     }
                     setTypingMessages({});
                     setCurrentLines({});
@@ -345,35 +619,76 @@ const LegalAssistant = () => {
                 currentConversation?.id || "default"
             );
 
-            setTimeout(() => {
-                const aiMessage: Message = {
-                    id: (Date.now() + 1).toString(),
-                    role: "assistant",
-                    content: response.response,
-                    timestamp: new Date()
-                };
-
-                setMessages([...newMessages, aiMessage]);
-            }, 300);
-
-            if (messages.length === 0 && currentConversation) {
-                const updatedConversations = conversations.map(conv =>
-                    conv.id === currentConversation.id
-                        ? { ...conv, title: input.substring(0, 30) + (input.length > 30 ? "..." : "") }
-                        : conv
-                );
-                setConversations(updatedConversations);
+            // Store the chat session ID from response
+            if (response.conversation_id) {
+                setChatSessionId(response.conversation_id);
             }
 
+            // Immediately add the AI response to the conversation
+            const aiMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                role: "assistant",
+                content: response.response,
+                timestamp: new Date()
+            };
+
+            const finalMessages = [...newMessages, aiMessage];
+            setMessages(finalMessages);
+
+            // For public mode, save messages to localStorage
+            if (isPublicMode && currentConversation) {
+                localStorage.setItem(`legalAssistant_messages_${currentConversation.id}`, JSON.stringify(finalMessages));
+            }
+
+            // For dashboard mode, refresh the conversation to get updated history from backend
+            if (isDashboardMode && user && currentConversation) {
+                try {
+                    // Refresh the current conversation from the backend
+                    const updatedConversation = await getConversation(currentConversation.id);
+                    if (updatedConversation) {
+                        // Update the conversations list with the refreshed conversation
+                        const updatedConversations = conversations.map(conv =>
+                            conv.id === currentConversation.id
+                                ? { ...conv, lastMessage: input.substring(0, 50) + (input.length > 50 ? "..." : "") }
+                                : conv
+                        );
+                        setConversations(updatedConversations);
+                    }
+                } catch (refreshError) {
+                    console.error('Failed to refresh conversation:', refreshError);
+                }
+            }
+
+            // Update conversation title and last message
             if (currentConversation) {
-                const updatedConversations = conversations.map(conv =>
-                    conv.id === currentConversation.id
-                        ? { ...conv, lastMessage: input.substring(0, 50) + (input.length > 50 ? "..." : "") }
-                        : conv
-                );
-                setConversations(updatedConversations);
-            }
+                const updatedConversations = conversations.map(conv => {
+                    if (conv.id === currentConversation.id) {
+                        // For first message, update title; for all messages, update last message
+                        const updatedConv = { ...conv };
+                        if (!conv.title || conv.title === "New Conversation" || conv.title === "General Chat" || conv.title.trim() === "") {
+                            updatedConv.title = input.substring(0, 30) + (input.length > 30 ? "..." : "");
+                        }
+                        updatedConv.lastMessage = input.substring(0, 50) + (input.length > 50 ? "..." : "");
+                        return updatedConv;
+                    }
+                    return conv;
+                });
 
+                setConversations(updatedConversations);
+
+                // For public mode, save to localStorage
+                if (isPublicMode) {
+                    localStorage.setItem('legalAssistant_conversations', JSON.stringify(updatedConversations));
+                }
+
+                // For dashboard mode, update the current conversation state
+                if (isDashboardMode && user) {
+                    const updatedCurrent = updatedConversations.find(conv => conv.id === currentConversation.id);
+                    if (updatedCurrent) {
+                        setCurrentConversation(updatedCurrent);
+                    }
+                }
+            }
         } catch (error) {
             toast({
                 title: "Error",
@@ -409,9 +724,12 @@ const LegalAssistant = () => {
             )}
 
             {/* Main Chat Area */}
-            <div className={`flex-1 flex flex-col overflow-hidden relative ${isSidebarOpen ? 'mr-96' : ''}`}>
+            <div
+                className="flex-1 flex flex-col transition-[margin] duration-75 ease-out"
+                style={{ marginRight: isSidebarOpen ? sidebarWidth : 0 }}
+            >
                 {/* Messages Area */}
-                <ScrollArea className="flex-1 p-4 pb-32">
+                <ScrollArea className="flex-1 p-2">
                     {messages.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center max-w-2xl mx-auto">
                             <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -438,7 +756,7 @@ const LegalAssistant = () => {
                             </div>
                         </div>
                     ) : (
-                        <div className="space-y-6 max-w-5xl mx-auto pb-20">
+                        <div className="space-y-6 max-w-5xl mx-auto pb-4">
                             {messages.map((message) => {
                                 const displayContent = message.role === "assistant"
                                     ? typingMessages[message.id] || ""
@@ -517,54 +835,65 @@ const LegalAssistant = () => {
                             <div ref={messagesEndRef} />
                         </div>
                     )}
-
-                    {/* Input Area - Floating */}
-                    <div className="absolute bottom-6 left-0 right-0 px-4 z-10 pointer-events-none">
-                        <form onSubmit={handleSubmit} className="max-w-5xl mx-auto pointer-events-auto shadow-2xl rounded-2xl bg-background/80 backdrop-blur-md border border-border/50 p-2">
-                            <div className="flex gap-2 items-end">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-10 w-10 flex-shrink-0 rounded-xl"
-                                    disabled={isLoading}
-                                >
-                                    <Paperclip className="h-5 w-5 text-muted-foreground" />
-                                </Button>
-                                <Textarea
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Message Legal Assistant..."
-                                    className="min-h-[50px] max-h-[200px] resize-none flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                                    disabled={isLoading}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleSubmit(e);
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    type="submit"
-                                    size="icon"
-                                    className="h-10 w-10 flex-shrink-0 rounded-xl mb-1"
-                                    disabled={isLoading || !input.trim()}
-                                >
-                                    {isLoading ? (
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                    ) : (
-                                        <Send className="h-5 w-5" />
-                                    )}
-                                </Button>
-                            </div>
-                        </form>
-                    </div>
                 </ScrollArea>
+
+                {/* Input Area - Fixed at bottom, outside of scrollable area */}
+                <div className="border-t p-4">
+                    <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
+                        <div className="flex gap-2 items-end">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 flex-shrink-0 rounded-xl"
+                                disabled={isLoading}
+                            >
+                                <Paperclip className="h-5 w-5 text-muted-foreground" />
+                            </Button>
+                            <Textarea
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder="Message Legal Assistant..."
+                                className="min-h-[50px] max-h-[200px] resize-none flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                disabled={isLoading}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSubmit(e);
+                                    }
+                                }}
+                            />
+                            <Button
+                                type="submit"
+                                size="icon"
+                                className="h-10 w-10 flex-shrink-0 rounded-xl"
+                                disabled={isLoading || !input.trim()}
+                            >
+                                {isLoading ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : (
+                                    <Send className="h-5 w-5" />
+                                )}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             {/* Fixed Right Sidebar */}
             {isSidebarOpen && (
-                <div className="fixed right-0 top-16 bottom-0 w-96 border-l border-border bg-card flex flex-col">
+                <div
+                    className="fixed right-0 top-16 bottom-0 border-l border-border bg-card flex flex-col z-30 shadow-xl"
+                    style={{ width: sidebarWidth }}
+                >
+                    {/* Resize Handle */}
+                    <div
+                        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-primary/20 transition-colors z-50 flex items-center justify-center -ml-1 group touch-none"
+                        onMouseDown={startResizing}
+                    >
+                        {/* Visual handle indicator */}
+                        <div className="w-1 h-8 bg-muted-foreground/20 rounded-full group-hover:bg-primary/50 transition-colors" />
+                    </div>
                     <div className="p-4 border-b border-border flex items-center justify-between">
                         <h2 className="text-lg font-semibold flex items-center gap-2">
                             <Settings className="h-5 w-5" />
@@ -581,7 +910,7 @@ const LegalAssistant = () => {
                     </div>
 
                     <ScrollArea className="flex-1 p-4">
-                        <div className="space-y-6">
+                        <div className="space-y-6 pr-4">
                             {/* Response Mode */}
                             <div className="space-y-3">
                                 <h3 className="font-medium text-sm flex items-center gap-2">
@@ -608,53 +937,44 @@ const LegalAssistant = () => {
                                         <MessageCircle className="h-4 w-4" />
                                         Conversations
                                     </h3>
-                                    <div className="flex gap-1">
-                                        <Button
-                                            onClick={createNewConversation}
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 w-7 p-0"
-                                        >
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            onClick={handleRefreshData}
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 w-7 p-0"
-                                        >
-                                            <RefreshCw className="h-4 w-4" />
-                                        </Button>
-                                    </div>
+                                    <Button
+                                        onClick={createNewConversation}
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
                                 </div>
                                 <div className="space-y-2">
                                     {conversations.map((conversation) => (
                                         <div
                                             key={conversation.id}
                                             className={cn(
-                                                "p-3 rounded-lg cursor-pointer transition-colors text-sm",
+                                                "relative p-3 pr-10 rounded-lg cursor-pointer transition-colors text-sm",
                                                 currentConversation?.id === conversation.id
                                                     ? "bg-primary/10 border border-primary/20"
                                                     : "hover:bg-muted"
                                             )}
                                             onClick={() => selectConversation(conversation)}
                                         >
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex-1 min-w-0">
-                                                    <h4 className="font-medium truncate">{conversation.title}</h4>
-                                                    <p className="text-xs text-muted-foreground truncate mt-1">
-                                                        {conversation.lastMessage || "New conversation"}
-                                                    </p>
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-5 w-5 ml-1 flex-shrink-0"
-                                                    onClick={(e) => handleDeleteConversation(conversation.id, e)}
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
+
+                                            <div className="min-w-0">
+
+                                                <h4 className="font-medium truncate">{conversation.title}</h4>
+                                                <p className="text-xs text-muted-foreground truncate mt-1">
+                                                    {conversation.lastMessage || "New conversation"}
+                                                </p>
                                             </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="absolute top-2 right-1 h-6 w-6 opacity-60 hover:opacity-100"
+                                                onClick={(e) => handleDeleteConversation(conversation.id, e)}
+                                            >
+
+                                                <Trash2 className="h-3 w-3" />
+                                            </Button>
                                         </div>
                                     ))}
                                 </div>
@@ -671,7 +991,7 @@ const LegalAssistant = () => {
                                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                                     )}
                                 </div>
-                                
+
                                 {sessionStats && (
                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                         <div className="bg-muted/50 p-2 rounded">
@@ -694,34 +1014,6 @@ const LegalAssistant = () => {
                                 )}
                             </div>
 
-                            {/* System Status */}
-                            <div className="space-y-3">
-                                <h3 className="font-medium text-sm flex items-center gap-2">
-                                    <Activity className="h-4 w-4" />
-                                    System Status
-                                </h3>
-                                
-                                {embeddingsStatus && (
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground">Embeddings</span>
-                                            <span className={embeddingsStatus.embeddings_loaded ? "text-green-600" : "text-red-600"}>
-                                                {embeddingsStatus.embeddings_loaded ? "Loaded" : "Not Loaded"}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground">Vector DB</span>
-                                            <span className={embeddingsStatus.vector_store_status === "connected" ? "text-green-600" : "text-red-600"}>
-                                                {embeddingsStatus.vector_store_status === "connected" ? "Connected" : "Disconnected"}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground">Collections</span>
-                                            <span className="text-muted-foreground">{embeddingsStatus.collections_count || 0}</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
 
                             {/* Session Management */}
                             <div className="space-y-3">
@@ -729,9 +1021,9 @@ const LegalAssistant = () => {
                                     <Database className="h-4 w-4" />
                                     Session Management
                                 </h3>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     className="w-full text-xs"
                                     onClick={handleResetSession}
                                 >

@@ -1,5 +1,5 @@
 // Simple fetch wrapper to replace axios
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const BASE_URL = import.meta.env.VITE_AUTH_SERVICE_BASE_URL || '';
 
 interface RequestConfig extends RequestInit {
     headers?: Record<string, string>;
@@ -8,7 +8,7 @@ interface RequestConfig extends RequestInit {
 class ApiClient {
     private async request<T>(endpoint: string, config: RequestConfig = {}): Promise<T> {
         const url = `${BASE_URL}${endpoint}`;
-        
+
         const headers = {
             'Content-Type': 'application/json',
             ...config.headers,
@@ -66,7 +66,7 @@ class ApiClient {
     // Special method for raw responses (blobs, etc)
     async postRaw(endpoint: string, data: any, config?: RequestConfig): Promise<Blob> {
         const url = `${BASE_URL}${endpoint}`;
-        
+
         const headers = {
             'Content-Type': 'application/json',
             ...config?.headers,
@@ -92,17 +92,17 @@ class ApiClient {
     async postFormData<T>(endpoint: string, formData: FormData, config?: RequestConfig): Promise<T> {
         // For FormData requests, we should not set Content-Type header
         // Let the browser set it with the proper boundary
-        
+
         const headers = {
             ...config?.headers,
         };
-        
+
         // Remove Content-Type from headers if it exists to let browser set it
         const finalHeaders = { ...headers };
         delete finalHeaders['Content-Type'];
 
         const url = `${BASE_URL}${endpoint}`;
-        
+
         const response = await fetch(url, {
             ...config,
             method: 'POST',

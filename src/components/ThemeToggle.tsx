@@ -5,8 +5,6 @@ import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 
 export function ThemeToggle() {
   return (
-    <Button variant="ghost" size="icon" className="relative w-9 h-9 p-0">
-      <AnimatedThemeToggler className="w-5 h-5" />
-    </Button>
+    <AnimatedThemeToggler className="relative w-9 h-9 p-0 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors" />
   );
 }

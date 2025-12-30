@@ -30,11 +30,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const currentUser = authService.getUser();
         const currentRole = authService.getRole();
-        
+
         if (currentUser) {
           setUser(currentUser);
           setRole(currentRole);
-          
+
           // Try to refresh user data from server
           const refreshedUser = await authService.refreshUser();
           if (refreshedUser) {
@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       }
     };
-    
+
     initAuth();
   }, []);
 
@@ -68,14 +68,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser(newUser);
       setRole(selectedRole);
-      
+
       toast.success('Account created successfully!');
       // Navigate to the appropriate dashboard based on selected role
       navigate(`/dashboard/${selectedRole}`);
       return { error: null };
     } catch (error: any) {
       let errorMessage = 'An unexpected error occurred';
-      
+
       if (error.message) {
         errorMessage = error.message;
       } else if (error.status === 409) {
@@ -83,7 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (error.status === 400) {
         errorMessage = 'Please check your input and try again';
       }
-      
+
       toast.error(errorMessage);
       return { error };
     } finally {
@@ -101,14 +101,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser(authenticatedUser);
       setRole(authenticatedUser.role || 'public');
-      
+
       toast.success('Welcome back!');
       // Navigate to the appropriate dashboard based on user role
       navigate(`/dashboard/${authenticatedUser.role || 'public'}`);
       return { error: null };
     } catch (error: any) {
       let errorMessage = 'Invalid email or password';
-      
+
       if (error.message) {
         errorMessage = error.message;
       } else if (error.status === 401) {
@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (error.status === 400) {
         errorMessage = 'Please check your input and try again';
       }
-      
+
       toast.error(errorMessage);
       return { error };
     } finally {
@@ -127,7 +127,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     try {
       await authService.logout();
-      
+
       setUser(null);
       setRole(null);
       toast.success('Signed out successfully');
@@ -143,7 +143,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await authService.setRole(newRole);
       setRole(newRole);
       toast.success(`Switched to ${newRole === 'lawyer' ? 'Lawyer' : 'Public'} Mode`);
-      
+
       // Navigate to appropriate dashboard
       navigate(`/dashboard/${newRole}`);
     } catch (error: any) {

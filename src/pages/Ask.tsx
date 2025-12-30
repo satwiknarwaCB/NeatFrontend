@@ -43,9 +43,8 @@ import { cn } from "@/lib/utils";
 import { LegalResearchResponse } from "@/types/api";
 import { useExperienceMode } from "@/contexts/ExperienceModeContext";
 import { getConversations, getConversation, createConversation, deleteConversation } from "@/services/legalApi";
-import { chatWithAI } from "@/services/legalChatbotApi";
+import { chatWithAI, uploadDocuments } from "@/services/legalChatbotApi";
 import { Conversation as ApiConversation } from "@/services/legalApi";
-
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -62,7 +61,10 @@ const Ask = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [researchResult, setResearchResult] = useState<LegalResearchResponse | null>(null);
   const [responseMode, setResponseMode] = useState<"Hybrid (Smart)" | "Document Only" | "General Chat" | "Layman Explanation">(!isPublicMode ? "Hybrid (Smart)" : "Layman Explanation");
-
+  
+  // File upload state
+  const [files, setFiles] = useState<Array<{ name: string; file: File }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Chat states
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
   const [currentConversation, setCurrentConversation] = useState<ApiConversation | null>(null);
@@ -173,6 +175,31 @@ const Ask = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Handle file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFiles = Array.from(e.target.files || []);
+    const newFiles = uploadedFiles.map(file => ({
+      name: file.name,
+      file: file
+    }));
+
+    setFiles(prev => [...prev, ...newFiles]);
+
+    // Reset input value to allow uploading the same file again or new files
+    if (e.target) {
+      e.target.value = '';
+    }
+
+    toast({
+      title: "Files selected",
+      description: `${uploadedFiles.length} file(s) ready for analysis.`,
+    });
+  };
+
+  // Trigger file input when paperclip button is clicked
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
   const loadConversations = async () => {
     try {
       const fetchedConversations = await getConversations();
@@ -298,17 +325,18 @@ const Ask = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && files.length === 0) || isLoading) return;
 
     try {
       setIsLoading(true);
       setIsTyping(true);
 
       // Add user message
+      const userMessageContent = input.trim() || (files.length > 0 ? `${files.length} file(s) uploaded` : "");
       const userMessage: Message = {
         id: Date.now().toString(),
         role: "user",
-        content: input,
+        content: userMessageContent,
         timestamp: new Date()
       };
 
@@ -316,12 +344,52 @@ const Ask = () => {
       setMessages(newMessages);
       setInput("");
 
-      // Get AI response
-      const response = await chatWithAI(
-        input,
-        "General Chat",
-        currentConversation?.id || "default"
-      );
+      let response: any;
+
+      // If we have files, upload them first and then get AI response
+      if (files.length > 0) {
+        // Create FormData for file upload
+        const formData = new FormData();
+        files.forEach((fileObj) => {
+          formData.append('file', fileObj.file);
+        });
+
+        // Upload files using the legalChatbotApi service
+        try {
+          await uploadDocuments(formData);
+          toast({
+            title: "Files uploaded",
+            description: `${files.length} file(s) uploaded successfully.`,
+          });
+          
+          // Clear uploaded files
+          setFiles([]);
+        } catch (uploadError) {
+          console.error("File upload error:", uploadError);
+          toast({
+            title: "Upload failed",
+            description: "Failed to upload files. Please try again.",
+            variant: "destructive",
+          });
+          throw uploadError;
+        }
+      }
+
+      // Get AI response only if there's text input
+      if (input.trim()) {
+        response = await chatWithAI(
+          input,
+          "General Chat",
+          currentConversation?.id || "default"
+        );
+      } else {
+        // If only files were uploaded, create a simple response
+        response = {
+          response: "I've received your file(s). You can now ask questions about them.",
+          sources: [],
+          tokens_used: 0
+        };
+      }
 
       // Add AI message with a small delay for better UX
       setTimeout(() => {
@@ -367,7 +435,6 @@ const Ask = () => {
       setIsTyping(false);
     }
   };
-
   const handleResearch = async () => {
     if (!query.trim()) {
       toast({
@@ -551,6 +618,180 @@ const Ask = () => {
     "How do I create a will?"
   ];
 
+  // Helper function to format legal content with design system
+  const formatLegalContent = (content: string) => {
+    // For testing - log the content to see what we're working with
+    console.log("Formatting content:", content);
+    
+    // Split content into lines
+    const lines = content.split('\n');
+    const formattedElements = [];
+    let listItems = [];
+    let inList = false;
+    let paragraphBuffer = [];
+    
+    lines.forEach((line, index) => {
+      const trimmedLine = line.trim();
+      
+      // Skip empty lines but flush buffers
+      if (trimmedLine === '') {
+        // Flush paragraph buffer
+        if (paragraphBuffer.length > 0) {
+          formattedElements.push(
+            <p key={`para-${index}`} className="text-base leading-relaxed mb-4">
+              {paragraphBuffer.join(' ')}
+            </p>
+          );
+          paragraphBuffer = [];
+        }
+        return;
+      }
+      
+      // Handle headings (more comprehensive pattern matching)
+      if (
+        // Markdown headers
+        trimmedLine.match(/^#{1,3}\s/) ||
+        // All caps short lines (likely headings)
+        (trimmedLine.toUpperCase() === trimmedLine && trimmedLine.length > 5 && trimmedLine.length < 100 && !trimmedLine.match(/^[\*\-\d\+]/)) ||
+        // Lines ending with a colon (section headers)
+        trimmedLine.endsWith(':') && trimmedLine.length < 80
+      ) {
+        // Flush paragraph buffer
+        if (paragraphBuffer.length > 0) {
+          formattedElements.push(
+            <p key={`para-${index}-buffer`} className="text-base leading-relaxed mb-4">
+              {paragraphBuffer.join(' ')}
+            </p>
+          );
+          paragraphBuffer = [];
+        }
+        
+        // Flush any existing list
+        if (inList && listItems.length > 0) {
+          formattedElements.push(
+            <ul key={`list-${index}`} className="ml-6 mb-4 space-y-2">
+              {listItems.map((item, i) => (
+                <li key={`list-item-${index}-${i}`} className="text-base leading-relaxed pl-2 relative before:content-['•'] before:absolute before:left-[-12px] before:text-black">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          );
+          listItems = [];
+          inList = false;
+        }
+        
+        // Format as heading
+        const headingText = trimmedLine
+          .replace(/^#{1,3}\s/, '')
+          .replace(/\*$/, '')
+          .replace(/:$/, '');
+        
+        formattedElements.push(
+          <h2 key={`heading-${index}`} className="text-xl font-bold text-gray-800 mt-6 mb-3 flex items-center">
+            <Scale className="h-5 w-5 mr-2 text-gray-600" />
+            {headingText}
+          </h2>
+        );
+      }
+      // Handle list items (more comprehensive pattern matching)
+      else if (
+        trimmedLine.match(/^[\*\-\d\+]\s/) || 
+        trimmedLine.match(/^\s*[\*\-\d\+]/) ||
+        (trimmedLine.startsWith('+ ') || trimmedLine.startsWith('- '))
+      ) {
+        // Flush paragraph buffer
+        if (paragraphBuffer.length > 0) {
+          formattedElements.push(
+            <p key={`para-${index}-buffer`} className="text-base leading-relaxed mb-4">
+              {paragraphBuffer.join(' ')}
+            </p>
+          );
+          paragraphBuffer = [];
+        }
+        
+        const listItemText = trimmedLine
+          .replace(/^[\*\-\d\+]\s/, '')
+          .replace(/^\s*[\*\-\d\+]/, '')
+          .replace(/^\+ /, '')
+          .replace(/^- /, '')
+          .trim();
+        
+        listItems.push(listItemText);
+        inList = true;
+      }
+      // Handle callout/important notes
+      else if (
+        trimmedLine.includes('IMPORTANT:') || 
+        trimmedLine.includes('NOTE:') || 
+        trimmedLine.includes('For example,') ||
+        trimmedLine.includes('Remember,')
+      ) {
+        // Flush paragraph buffer
+        if (paragraphBuffer.length > 0) {
+          formattedElements.push(
+            <p key={`para-${index}-buffer`} className="text-base leading-relaxed mb-4">
+              {paragraphBuffer.join(' ')}
+            </p>
+          );
+          paragraphBuffer = [];
+        }
+        
+        // Flush any existing list
+        if (inList && listItems.length > 0) {
+          formattedElements.push(
+            <ul key={`list-${index}`} className="ml-6 mb-4 space-y-2">
+              {listItems.map((item, i) => (
+                <li key={`list-item-${index}-${i}`} className="text-base leading-relaxed pl-2 relative before:content-['•'] before:absolute before:left-[-12px] before:text-black">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          );
+          listItems = [];
+          inList = false;
+        }
+        
+        // Format as callout
+        formattedElements.push(
+          <div key={`callout-${index}`} className="bg-gray-100 border border-gray-300 rounded-lg p-4 my-4">
+            <div className="font-semibold text-base leading-relaxed">
+              {trimmedLine}
+            </div>
+          </div>
+        );
+      }
+      // Buffer regular text for paragraph formation
+      else {
+        paragraphBuffer.push(trimmedLine);
+      }
+    });
+    
+    // Flush any remaining paragraph buffer
+    if (paragraphBuffer.length > 0) {
+      formattedElements.push(
+        <p key="para-final" className="text-base leading-relaxed mb-4">
+          {paragraphBuffer.join(' ')}
+        </p>
+      );
+    }
+    
+    // Flush any remaining list
+    if (inList && listItems.length > 0) {
+      formattedElements.push(
+        <ul key="list-final" className="ml-6 mb-4 space-y-2">
+          {listItems.map((item, i) => (
+            <li key={`list-item-final-${i}`} className="text-base leading-relaxed pl-2 relative before:content-['•'] before:absolute before:left-[-12px] before:text-black">
+              {item}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    
+    return formattedElements;
+  };
+
   // For public mode, we render content directly without a layout wrapper
   if (isPublicMode) {
     return (
@@ -628,23 +869,7 @@ const Ask = () => {
                           : "bg-muted rounded-tl-none"
                       )}>
                         <div className="whitespace-pre-wrap text-sm">
-                          {lines.map((line, index) => (
-                            <div
-                              key={index}
-                              className={cn(
-                                "transition-all duration-300 ease-out",
-                                index > currentLine ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
-                              )}
-                            >
-                              {line
-                                .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold markdown
-                                .replace(/\*(.*?)\*/g, '$1')      // Remove italic markdown
-                                .replace(/__(.*?)__/g, '$1')      // Remove bold underline markdown
-                                .replace(/_(.*?)_/g, '$1')        // Remove italic underline markdown
-                                .replace(/^#+\s*(.*?)$/gm, '$1')  // Remove headers
-                              }
-                            </div>
-                          ))}
+                          {message.role === "assistant" ? formatLegalContent(displayContent) : displayContent}
                         </div>
                       </div>
                       {message.role === "user" && (
@@ -687,11 +912,19 @@ const Ask = () => {
                     size="icon"
                     className="h-10 w-10 flex-shrink-0 rounded-xl"
                     disabled={isLoading}
+                    onClick={triggerFileInput}
                   >
                     <Paperclip className="h-5 w-5 text-muted-foreground" />
                   </Button>
-                  <Textarea
-                    value={input}
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf"
+                    onChange={handleFileUpload}
+                    ref={fileInputRef}
+                    className="hidden"
+                  />
+                  <Textarea                    value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Message Legal AId..."
                     className="min-h-[50px] max-h-[200px] resize-none flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -927,20 +1160,13 @@ const Ask = () => {
                       </Avatar>
                     )}
                     <div className={cn(
-                      "max-w-[85%] rounded-2xl px-4 py-3 transition-opacity duration-300 ease-in",
+                      "max-w-[85%] rounded-2xl px-4 py-3",
                       message.role === "user"
                         ? "bg-primary text-primary-foreground rounded-tr-none"
                         : "bg-muted rounded-tl-none"
                     )}>
                       <div className="whitespace-pre-wrap text-sm">
-                        {displayContent
-                          .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold markdown
-                          .replace(/\*(.*?)\*/g, '$1')      // Remove italic markdown
-                          .replace(/__(.*?)__/g, '$1')      // Remove bold underline markdown
-                          .replace(/_(.*?)_/g, '$1')        // Remove italic underline markdown
-                          .replace(/^#+\s*(.*?)$/gm, '$1')  // Remove headers
-                          .replace(/^\s*[\r\n]/gm, '')      // Remove empty lines
-                        }
+                        {message.role === "assistant" ? formatLegalContent(displayContent) : displayContent}
                       </div>
                     </div>
                     {message.role === "user" && (
@@ -983,9 +1209,18 @@ const Ask = () => {
                   size="icon"
                   className="h-10 w-10 flex-shrink-0 rounded-xl"
                   disabled={isLoading}
+                  onClick={triggerFileInput}
                 >
                   <Paperclip className="h-5 w-5 text-muted-foreground" />
                 </Button>
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf"
+                  onChange={handleFileUpload}
+                  ref={fileInputRef}
+                  className="hidden"
+                />
                 <Textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}

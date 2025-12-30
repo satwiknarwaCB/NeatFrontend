@@ -95,16 +95,7 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
             {/* Removed redundant desktop logo since it's in the sidebar */}
           </div>
 
-          <div className="relative w-full max-w-md hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search legal topics..."
-              className="pl-10 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-primary text-sm"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <ThemeToggle />
 
             {/* Profile Dropdown */}

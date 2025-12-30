@@ -13,8 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, Cell } from 'recharts';
 import { exportReport } from '@/services/legalApi';
 import { processDocuments, extractText, summarizeDocuments, analyzeClauses, assessRisks, extractChronology, classifyDocument } from '@/services/documentAnalysisApi';
-import { chatWithAI } from '@/services/legalChatbotApi';
+import { chatWithDocument } from '@/services/documentAnalysisApi';
 import { Slider } from "@/components/ui/slider";
+import DashboardLayout from "@/components/DashboardLayout";
 
 // Types for our API responses
 interface DocumentAnalysisResult {
@@ -56,8 +57,8 @@ interface DocumentAnalysisResult {
     suggested_action?: string;
   }>;
   classification?: {
-    type: string;
-    confidence: number;
+    document_type: string;
+    importance: number;
     subject: string;
   };
   summary?: string;
@@ -133,7 +134,6 @@ const Interact = () => {
   const [inputMessage, setInputMessage] = useState('');
 
   const { toast } = useToast();
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = Array.from(e.target.files || []);
     const newFiles = uploadedFiles.map(file => ({
@@ -152,7 +152,6 @@ const Interact = () => {
       description: `${uploadedFiles.length} file(s) ready for analysis.`,
     });
   };
-
   const handleExportReport = async (format: 'txt' | 'pdf' | 'docx' = 'txt') => {
     if (!analysisResult) {
       toast({
@@ -262,10 +261,9 @@ const Interact = () => {
         if (analysisResult.classification) {
           reportContent += `\nDocument Classification:\n`;
           reportContent += `=======================\n`;
-          reportContent += `Type: ${analysisResult.classification.type}\n`;
+          reportContent += `Type: ${analysisResult.classification.document_type}\n`;
           reportContent += `Subject: ${analysisResult.classification.subject}\n`;
-          reportContent += `Confidence: ${(analysisResult.classification.confidence * 100).toFixed(0)}%\n`;
-        }
+          reportContent += `Confidence: ${(analysisResult.classification.importance * 100).toFixed(0)}%\n`;        }
 
         // Add sources
         if (analysisResult.sources && analysisResult.sources.length > 0) {
@@ -526,12 +524,18 @@ const Interact = () => {
         
         data = await response.json();
       } else {
-        // For chat operations, use the chatWithAI service function
+        // For chat operations, use the chatWithDocument service function
         const message = formData.get('message') as string || userMessage;
         const mode = formData.get('mode') as 'document' | 'layman' || chatMode;
-        // Map old mode values to new chatbotMode values
-        const chatbotMode = chatMode;
-        data = await chatWithAI(message, chatbotMode);
+        // Build FormData for document chat
+        const chatFormData = new FormData();
+        files.forEach((fileObj) => {
+          if (fileObj.file) {
+            chatFormData.append('file', fileObj.file);
+          }
+        });
+        chatFormData.append('user_message', message);
+        data = await chatWithDocument(chatFormData);
         clearTimeout(timeoutId);
       }
 
@@ -625,10 +629,16 @@ const Interact = () => {
     setIsAnalyzing(true);
 
     try {
-      // Use the chatWithAI service function instead of direct fetch
-      // Map old mode values to new chatbotMode values
-      const chatbotMode = chatMode;
-      const chatData = await chatWithAI(newMessage, chatbotMode);
+      // Use the chatWithDocument service function instead of direct fetch
+      // Build FormData for document chat
+      const chatFormData = new FormData();
+      files.forEach((fileObj) => {
+        if (fileObj.file) {
+          chatFormData.append('file', fileObj.file);
+        }
+      });
+      chatFormData.append('user_message', newMessage);
+      const chatData = await chatWithDocument(chatFormData);
       
       // Add to chat history with proper typing
       const newUserMessage = {
@@ -753,53 +763,844 @@ const Interact = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto w-full p-4 md:p-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <FileText className="h-5 w-5 text-primary" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header Section */}
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-3">
+            <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <FileText className="h-7 w-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Document Analysis
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Upload and analyze legal documents with AI-powered insights
+              </p>
+            </div>
           </div>
-          Analyze Legal Documents
-        </h1>
-        <p className="text-muted-foreground">
-          Upload documents and get simple explanations about them.
-        </p>
-      </div>
+        </div>
 
-      {/* Layout: 2-Column with Results on Right */}
+        {/* CONDITIONAL LAYOUT: 2-column before analysis, vertical after analysis */}
+        {!analysisResult ? (
+          // BEFORE ANALYSIS: Optimized 2-Column Layout
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column - Main Upload and Configuration */}
+            <div className="lg:col-span-8 space-y-5">
+              {/* Upload Card */}
+              <Card className="border-2 border-gray-200 shadow-sm hover:shadow-md transition-all duration-200">
+                <CardHeader className="space-y-1 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <Upload className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg font-semibold text-gray-900">Upload Documents</CardTitle>
+                      <CardDescription className="text-sm">PDF files up to 20MB each</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="border-2 border-dashed rounded-lg p-10 text-center transition-all cursor-pointer border-gray-300 hover:border-blue-500 hover:bg-blue-50/50 bg-gray-50/80">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label htmlFor="file-upload" className="cursor-pointer block">
+                      <div className="mx-auto h-12 w-12 mb-3 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Upload className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <p className="text-base font-semibold text-gray-800 mb-1">
+                        Drop files here or click to upload
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Supports PDF documents
+                      </p>
+                    </label>
+                  </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left Column - Upload, Analysis Selection, and Configuration */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-            {/* Upload Documents Card */}
-            <Card className="border border-gray-200 bg-white rounded-xl shadow-sm">
+                  {files.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        {files.length} file{files.length > 1 ? 's' : ''} ready
+                      </Label>
+                      <div className="flex flex-wrap gap-2">
+                        {files.map((file, idx) => (
+                          <div
+                            key={idx}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 text-sm hover:shadow-sm transition-all"
+                          >
+                            <FileIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <span className="font-medium text-blue-900 max-w-[200px] truncate">
+                              {file.name}
+                            </span>
+                            {file.status === "uploading" && (
+                              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                            )}
+                            {file.status === "ready" && (
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            )}
+                            <button
+                              onClick={() => handleRemoveFile(idx)}
+                              className="ml-1 hover:bg-blue-200 rounded-md p-1 transition-colors"
+                              aria-label="Remove file"
+                            >
+                              <X className="h-3.5 w-3.5 text-blue-700" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Analysis Type and Options Combined */}
+              <Card className="border-2 border-gray-200 shadow-sm">
+                <CardHeader className="space-y-1 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                      <BarChart3 className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg font-semibold text-gray-900">Analysis Settings</CardTitle>
+                      <CardDescription className="text-sm">Choose analysis type and configure options</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {/* Analysis Type Selector */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">Analysis Type</Label>
+                    <Select value={analysisType} onValueChange={(value) => {
+                      setAnalysisType(value);
+                      setAnalysisResult(null);
+                      setChatHistory([]);
+                      setShowRightPanel(false);
+                    }}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Select analysis type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="summarize">Summarize Document</SelectItem>
+                        <SelectItem value="extract-text">Extract Text</SelectItem>
+                        <SelectItem value="clauses">Extract Key Clauses</SelectItem>
+                        <SelectItem value="risk">Risk Analysis</SelectItem>
+                        <SelectItem value="chronology">Chronology Builder</SelectItem>
+                        <SelectItem value="classify">Document Classification</SelectItem>
+                        <SelectItem value="chat">Document Chat</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t border-gray-200 -mx-6"></div>
+
+                  {/* Options Section */}
+                  <div className="space-y-4">
+
+                {/* Extract Text - No Options */}
+                {analysisType === "extract-text" && (
+                  <div className="text-sm text-muted-foreground bg-gray-50 p-3 rounded-md">
+                    Text extraction will process your document and extract all readable text content.
+                  </div>
+                )}
+
+                {/* Summarize Options */}
+                {analysisType === "summarize" && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="summary-instructions" className="font-medium">Summary Instructions</Label>
+                      <Textarea
+                        id="summary-instructions"
+                        value={summaryInstructions}
+                        onChange={(e) => setSummaryInstructions(e.target.value)}
+                        placeholder="Enter instructions for summarizing the document"
+                        className="min-h-24"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="summary-type" className="font-medium">Summary Type</Label>
+                      <Select value={summaryType} onValueChange={setSummaryType}>
+                        <SelectTrigger id="summary-type" className="h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                          <SelectItem value="executive">Executive</SelectItem>
+                          <SelectItem value="bullet_points">Bullet Points</SelectItem>
+                          <SelectItem value="custom">Custom</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="max-length" className="font-medium">Max Length (words)</Label>
+                      <Input
+                        id="max-length"
+                        type="number"
+                        value={maxLength}
+                        onChange={(e) => setMaxLength(Number(e.target.value))}
+                        min="100"
+                        max="2000"
+                        className="h-10"
+                      />
+                    </div>
+                    <div className="flex items-center space-x-3 pt-2">
+                      <Checkbox
+                        id="include-key-points"
+                        checked={includeKeyPoints}
+                        onCheckedChange={(checked) => setIncludeKeyPoints(checked as boolean)}
+                      />
+                      <Label htmlFor="include-key-points" className="font-medium cursor-pointer">
+                        Include Key Points
+                      </Label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Risk Assessment Options */}
+                {analysisType === "risk" && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="document-type" className="font-medium">Document Type</Label>
+                      <Select value={documentType} onValueChange={setDocumentType}>
+                        <SelectTrigger id="document-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="contract">Contract</SelectItem>
+                          <SelectItem value="nda">NDA</SelectItem>
+                          <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
+                          <SelectItem value="lease">Lease</SelectItem>
+                          <SelectItem value="general">General</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="assessment-focus">Assessment Focus</Label>
+                      <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
+                        <SelectTrigger id="assessment-focus">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                          <SelectItem value="financial">Financial</SelectItem>
+                          <SelectItem value="legal">Legal</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="risk-categories">Risk Categories (comma-separated)</Label>
+                      <Input
+                        id="risk-categories"
+                        value={riskCategories}
+                        onChange={(e) => setRiskCategories(e.target.value)}
+                        placeholder="financial,legal,compliance,operational"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="custom-instructions">Custom Instructions</Label>
+                      <Textarea
+                        id="custom-instructions"
+                        value={customInstructions}
+                        onChange={(e) => setCustomInstructions(e.target.value)}
+                        placeholder="Enter any custom instructions for risk assessment"
+                      />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="include-recommendations"
+                        checked={includeRecommendations}
+                        onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
+                      />
+                      <Label htmlFor="include-recommendations">Include Recommendations</Label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Chronology Options */}
+                {analysisType === "chronology" && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="document-date">Document Date (YYYY-MM-DD)</Label>
+                      <Input
+                        id="document-date"
+                        type="text"
+                        value={documentDate}
+                        onChange={(e) => setDocumentDate(e.target.value)}
+                        placeholder="2024-01-01"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Classification Options */}
+                {analysisType === "classify" && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="document-type-hint">Document Type Hint</Label>
+                      <Input
+                        id="document-type-hint"
+                        value={documentTypeHint}
+                        onChange={(e) => setDocumentTypeHint(e.target.value)}
+                        placeholder="Optional hint about document type"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="classification-focus">Classification Focus</Label>
+                      <Input
+                        id="classification-focus"
+                        value={classificationFocus}
+                        onChange={(e) => setClassificationFocus(e.target.value)}
+                        placeholder="Optional focus area for classification"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Chat Options */}
+                {analysisType === "chat" && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="user-message">Your Question</Label>
+                      <Textarea
+                        id="user-message"
+                        value={userMessage}
+                        onChange={(e) => setUserMessage(e.target.value)}
+                        placeholder="Ask a question about the document"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="chat-mode">Chat Mode</Label>
+                      <Select value={chatMode} onValueChange={(value) => setChatMode(value as "Document Only" | "Layman Explanation" | "Hybrid (Smart)" | "General Chat")}>
+                        <SelectTrigger id="chat-mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Document Only">Document Only</SelectItem>
+                          <SelectItem value="Layman Explanation">Layman Explanation</SelectItem>
+                          <SelectItem value="Hybrid (Smart)">Hybrid (Smart)</SelectItem>
+                          <SelectItem value="General Chat">General Chat</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {chatMode === "Document Only"
+                          ? "Get detailed, professional answers based on the document content"
+                          : chatMode === "Layman Explanation"
+                          ? "Get simple explanations in everyday language"
+                          : chatMode === "Hybrid (Smart)"
+                          ? "Intelligent combination of document content and general knowledge"
+                          : "General legal chat using broad knowledge base"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="temperature">Response Creativity ({temperature})</Label>
+                      <Slider
+                        id="temperature"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={[temperature]}
+                        onValueChange={(value) => setTemperature(value[0])}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Lower values (0.0-0.3) = more focused and deterministic responses.
+                        Higher values (0.7-1.0) = more creative and varied responses.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="max-tokens">Response Length ({maxTokens} tokens)</Label>
+                      <Slider
+                        id="max-tokens"
+                        min={500}
+                        max={4000}
+                        step={100}
+                        value={[maxTokens]}
+                        onValueChange={(value) => setMaxTokens(value[0])}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Adjust the maximum length of the AI response. Higher values allow for longer, more detailed answers.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              </CardContent>
+            </Card>
+
+              {/* Analyze Button */}
+              <Button
+                onClick={handleAnalyze}
+                disabled={isAnalyzing || files.length === 0}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-200"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Analyzing Document...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-5 w-5" />
+                    Analyze Document
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Right Column - Preview/Info Panel */}
+            <div className="lg:col-span-4">
+              <Card className="border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-white shadow-sm sticky top-6">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg font-semibold text-gray-900">Analysis Preview</CardTitle>
+                      <CardDescription className="text-sm">Upload a document to begin</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="p-4 rounded-lg bg-white border border-gray-200">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Quick Info</p>
+                      <ul className="text-xs text-gray-600 space-y-2">
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <span>AI-powered analysis</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <span>Multiple analysis types</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <span>Export in various formats</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+      ) : (
+        // AFTER ANALYSIS: Clean Vertical Layout
+        <div className="space-y-6">
+          {/* RESULTS CARD - Full Width */}
+          <Card className="border-2 border-gray-200 bg-white shadow-lg">
+            <CardHeader className="pb-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-md">
+                    <CheckCircle2 className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl font-bold text-gray-900">Analysis Complete</CardTitle>
+                    <CardDescription className="text-sm mt-1">
+                      {getAnalysisTitle(analysisType)} • {files[0]?.name}
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-6">
+              {/* Main Results Section */}
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <BookOpen className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {getAnalysisTitle(analysisType)}
+                  </h3>
+                </div>
+                <div className="max-h-[500px] overflow-y-auto bg-gray-50 rounded-lg p-6 border-2 border-gray-200 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                  {/* Extract Text Results */}
+                  {analysisType === "extract-text" && analysisResult.tagged_sections && analysisResult.tagged_sections.length > 0 ? (
+                    <div className="space-y-4">
+                      {analysisResult.tagged_sections.map((section, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                          <h4 className="font-semibold text-gray-900 mb-2">{section.heading || `Section ${idx + 1}`}</h4>
+                          <p className="text-base leading-relaxed text-gray-700 whitespace-pre-wrap">{section.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : analysisType === "extract-text" && analysisResult.raw_text ? (
+                    <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">{analysisResult.raw_text}</p>
+                  ) : analysisType === "clauses" && analysisResult.clause_analysis && analysisResult.clause_analysis.length > 0 ? (
+                    /* Clause Analysis Results */
+                    <div className="space-y-4">
+                      {analysisResult.clause_analysis.map((section, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                          <h4 className="font-semibold text-gray-900 mb-3">{section.heading}</h4>
+                          <div className="space-y-2">
+                            {section.clauses.map((clause, cIdx) => (
+                              <div key={cIdx} className="pl-3 border-l-2 border-teal-500 py-2">
+                                <p className="text-sm text-gray-700 mb-1">{clause.clause}</p>
+                                <p className="text-xs text-gray-600 italic">{clause.summary}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : analysisType === "clauses" && analysisResult.clauses && analysisResult.clauses.length > 0 ? (
+                    /* Alternative Clause Format */
+                    <div className="space-y-3">
+                      {analysisResult.clauses.map((clause, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="font-semibold text-gray-900">{clause.type || clause.clause_type}</span>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${clause.risk_level === 'high' || clause.severity === 'high' ? 'bg-red-100 text-red-800' :
+                              clause.risk_level === 'medium' || clause.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                              {clause.risk_level || clause.severity}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700">{clause.text || clause.risk_description}</p>
+                          {clause.recommendation && (
+                            <p className="text-xs text-teal-700 mt-2">💡 {clause.recommendation}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : analysisType === "risk" && analysisResult.risks && analysisResult.risks.length > 0 ? (
+                    /* Risk Analysis Results - Dynamic Rendering */
+                    <div className="space-y-4">
+                      {analysisResult.risks.map((risk, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                          {Object.entries(risk).map(([key, value]) => {
+                            // Skip null or undefined values
+                            if (value === null || value === undefined) return null;
+                            
+                            // Special handling for severity to show colored badge
+                            if (key === 'severity') {
+                              return (
+                                <div key={key} className="flex justify-between items-start mb-2">
+                                  <span className="font-medium text-gray-700 capitalize">{key}:</span>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    value === 'High' || value === 'high' ? 'bg-red-100 text-red-800' :
+                                    value === 'Medium' || value === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                    value === 'Low' || value === 'low' ? 'bg-green-100 text-green-800' :
+                                      'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    {String(value)}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            
+                            // Special handling for type/clause_type to show as title
+                            if (key === 'type' || key === 'clause_type') {
+                              return (
+                                <h3 key={key} className="font-semibold text-gray-900 mb-2">
+                                  {String(value)}
+                                </h3>
+                              );
+                            }
+                            
+                            // Format the key for display
+                            const formattedKey = key
+                              .replace(/_/g, ' ')
+                              .replace(/\b\w/g, char => char.toUpperCase());
+                            
+                            // For complex objects, stringify them
+                            const displayValue = typeof value === 'object' 
+                              ? JSON.stringify(value, null, 2) 
+                              : String(value);
+                            
+                            return (
+                              <div key={key} className="mb-2">
+                                <span className="font-medium text-gray-700 capitalize">{formattedKey}:</span>
+                                <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                                  {displayValue}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  ) : analysisType === "chronology" && analysisResult.timeline?.events && analysisResult.timeline.events.length > 0 ? (
+                    /* Chronology Builder Results */
+                    <div className="space-y-4">
+                      {analysisResult.timeline.events.map((event, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-semibold text-gray-900">{event.event_type}</h3>
+                            <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              {(event.confidence_score * 100).toFixed(1)}% Confidence
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 mb-3">{event.description}</p>
+                          {event.temporal_expressions && event.temporal_expressions.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {event.temporal_expressions.map((expr, exprIdx) => (
+                                <span key={exprIdx} className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded">
+                                  {expr.text}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Default: Summary/Analysis text */
+                    <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">
+                      {analysisResult.summary || analysisResult.analysis || "Analysis completed successfully."}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Risk Analysis Configuration Options - Only show when analysisType is "risk" */}
+              {analysisType === "risk" && (
+                <Card className="bg-white border border-gray-200 mt-4">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                      <Sliders className="h-4 w-4 text-gray-600" />
+                      Risk Analysis Configuration
+                    </CardTitle>
+                    <CardDescription className="text-xs text-gray-500">
+                      Customize your risk analysis parameters
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="document-type-slide">Document Type</Label>
+                        <Select value={documentType} onValueChange={setDocumentType}>
+                          <SelectTrigger id="document-type-slide">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="contract">Contract</SelectItem>
+                            <SelectItem value="nda">NDA</SelectItem>
+                            <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
+                            <SelectItem value="lease">Lease</SelectItem>
+                            <SelectItem value="general">General</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="assessment-focus-slide">Assessment Focus</Label>
+                        <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
+                          <SelectTrigger id="assessment-focus-slide">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                            <SelectItem value="financial">Financial</SelectItem>
+                            <SelectItem value="legal">Legal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="risk-categories-slide">Risk Categories (comma-separated)</Label>
+                        <Input
+                          id="risk-categories-slide"
+                          value={riskCategories}
+                          onChange={(e) => setRiskCategories(e.target.value)}
+                          placeholder="financial,legal,compliance,operational"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="custom-instructions-slide">Custom Instructions</Label>
+                        <Textarea
+                          id="custom-instructions-slide"
+                          value={customInstructions}
+                          onChange={(e) => setCustomInstructions(e.target.value)}
+                          placeholder="Enter any custom instructions for risk assessment"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="include-recommendations-slide"
+                          checked={includeRecommendations}
+                          onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
+                        />
+                        <Label htmlFor="include-recommendations-slide">Include Recommendations</Label>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Chronology Builder Configuration Options - Only show when analysisType is "chronology" */}
+              {analysisType === "chronology" && (
+                <Card className="bg-white border border-gray-200 mt-4">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-gray-600" />
+                      Chronology Builder Configuration
+                    </CardTitle>
+                    <CardDescription className="text-xs text-gray-500">
+                      Set the document date for chronology analysis
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="document-date-slide">Document Date (YYYY-MM-DD)</Label>
+                        <Input
+                          id="document-date-slide"
+                          type="text"
+                          value={documentDate}
+                          onChange={(e) => setDocumentDate(e.target.value)}
+                          placeholder="2024-01-01"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Additional Info Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                {/* Sources Section */}
+                {analysisResult.sources && analysisResult.sources.length > 0 && (
+                  <Card className="bg-white border-2 border-gray-200 shadow-sm">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                        <FileIcon className="h-5 w-5 text-blue-600" />
+                        Sources
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {analysisResult.sources.map((source, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                            <FileIcon className="h-3 w-3 text-teal-600" />
+                            <span>{source.file_name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Processing Metadata Section */}
+                <Card className="bg-white border-2 border-gray-200 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5 text-purple-600" />
+                      Processing Info
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">Processing Time:</span>
+                        <span className="font-semibold text-gray-900 ml-2">
+                          {analysisResult.processing_time?.toFixed(2)}s
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Tokens Used:</span>
+                        <span className="font-semibold text-gray-900 ml-2">
+                          {analysisResult.tokens_used?.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-600">Analysis ID:</span>
+                        <span className="font-mono text-xs text-gray-700 ml-2 break-all">
+                          {analysisResult.analysis_id}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Export & Actions */}
+                <div className="col-span-full mt-2">
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleExportReport('txt')}
+                        className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        TXT
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleExportReport('pdf')}
+                        className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        PDF
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleExportReport('docx')}
+                        className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        DOCX
+                      </Button>
+                    </div>
+                    <Card className="flex-1 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 p-3">
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start text-blue-700 hover:text-blue-900 hover:bg-blue-100/50 font-medium"
+                        size="sm"
+                      >
+                        <MessageCircle className="h-4 w-4 mr-2" />
+                        Ask follow-up questions
+                      </Button>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* RECONFIGURE SECTION */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Upload Another Document */}
+            <Card className="border-2 border-gray-200 bg-white shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-800">
-                  <Upload className="h-4 w-4 text-gray-600" />
-                  Upload Documents
-                </CardTitle>
-                <CardDescription className="text-xs text-gray-500">
-                  Upload your documents to get insights
-                </CardDescription>
+                <div className="flex items-center gap-2">
+                  <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <Upload className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-semibold text-gray-800">Upload New Document</CardTitle>
+                    <CardDescription className="text-xs">Analyze another file</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer border-gray-300 hover:border-teal-400 hover:bg-gray-50/50 bg-gray-50/30">
+                <div className="border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer border-gray-300 hover:border-blue-500 hover:bg-blue-50/50">
                   <input
                     type="file"
                     multiple
                     accept=".pdf"
                     onChange={handleFileUpload}
                     className="hidden"
-                    id="file-upload"
+                    id="file-upload-after"
                   />
-                  <label htmlFor="file-upload" className="cursor-pointer">
+                  <label htmlFor="file-upload-after" className="cursor-pointer">
                     <Upload className="mx-auto h-8 w-8 mb-2 text-gray-400" />
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Click or drag files here
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Upload PDF documents (max 20MB each)
+                    <p className="text-sm font-medium text-gray-700">
+                      Upload more files
                     </p>
                   </label>
                 </div>
@@ -840,20 +1641,25 @@ const Interact = () => {
               </CardContent>
             </Card>
 
-            {/* Select Analysis Mode Card */}
-            <Card className="border border-gray-200 bg-white rounded-xl shadow-sm">
+            {/* Select Analysis Mode */}
+            <Card className="border-2 border-gray-200 bg-white shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-800">
-                  <BarChart3 className="h-4 w-4 text-gray-600" />
-                  Select Analysis Mode
-                </CardTitle>
-                <CardDescription className="text-xs text-gray-500">Choose the type of analysis to perform</CardDescription>
+                <div className="flex items-center gap-2">
+                  <div className="h-9 w-9 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <BarChart3 className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-semibold text-gray-800">Analysis Mode</CardTitle>
+                    <CardDescription className="text-xs">Change analysis type</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   <Select value={analysisType} onValueChange={(value) => {
                     setAnalysisType(value);
-                    setAnalysisResult(null);
+                    // Don't clear analysis result in AFTER ANALYSIS section
+                    // This keeps the current results visible while changing mode
                     setChatHistory([]);
                     setShowRightPanel(false);
                   }}>
@@ -873,949 +1679,31 @@ const Interact = () => {
                 </div>
               </CardContent>
             </Card>
-          </div>
 
-          {/* Analysis Options Card */}
-          <Card className="border border-gray-200 bg-white rounded-xl shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-800">
-                <Sliders className="h-4 w-4 text-gray-600" />
-                Analysis Configuration
-              </CardTitle>
-              <CardDescription className="text-xs text-gray-500">
-                Configure options for {getAnalysisTitle(analysisType).toLowerCase()}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <h3 className="font-semibold text-sm text-gray-700">Analysis Options</h3>
-
-              {/* Extract Text - No Options */}
-              {analysisType === "extract-text" && (
-                <div className="text-muted-foreground">
-                  Text extraction will process your document and extract all readable text content.
-                  No additional configuration options are available for this analysis type.
-                </div>
-              )}
-
-              {/* Summarize Options */}
-              {analysisType === "summarize" && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="summary-instructions">Summary Instructions</Label>
-                    <Textarea
-                      id="summary-instructions"
-                      value={summaryInstructions}
-                      onChange={(e) => setSummaryInstructions(e.target.value)}
-                      placeholder="Enter instructions for summarizing the document"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="summary-type">Summary Type</Label>
-                    <Select value={summaryType} onValueChange={setSummaryType}>
-                      <SelectTrigger id="summary-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="comprehensive">Comprehensive</SelectItem>
-                        <SelectItem value="executive">Executive</SelectItem>
-                        <SelectItem value="bullet_points">Bullet Points</SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="max-length">Max Length (words)</Label>
-                    <Input
-                      id="max-length"
-                      type="number"
-                      value={maxLength}
-                      onChange={(e) => setMaxLength(Number(e.target.value))}
-                      min="100"
-                      max="2000"
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="include-key-points"
-                      checked={includeKeyPoints}
-                      onCheckedChange={(checked) => setIncludeKeyPoints(checked as boolean)}
-                    />
-                    <Label htmlFor="include-key-points">Include Key Points</Label>
-                  </div>
-                </div>
-              )}
-
-              {/* Risk Assessment Options */}
-              {analysisType === "risk" && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="document-type">Document Type</Label>
-                    <Select value={documentType} onValueChange={setDocumentType}>
-                      <SelectTrigger id="document-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="contract">Contract</SelectItem>
-                        <SelectItem value="nda">NDA</SelectItem>
-                        <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
-                        <SelectItem value="lease">Lease</SelectItem>
-                        <SelectItem value="general">General</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="assessment-focus">Assessment Focus</Label>
-                    <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
-                      <SelectTrigger id="assessment-focus">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="comprehensive">Comprehensive</SelectItem>
-                        <SelectItem value="financial">Financial</SelectItem>
-                        <SelectItem value="legal">Legal</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="risk-categories">Risk Categories (comma-separated)</Label>
-                    <Input
-                      id="risk-categories"
-                      value={riskCategories}
-                      onChange={(e) => setRiskCategories(e.target.value)}
-                      placeholder="financial,legal,compliance,operational"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-instructions">Custom Instructions</Label>
-                    <Textarea
-                      id="custom-instructions"
-                      value={customInstructions}
-                      onChange={(e) => setCustomInstructions(e.target.value)}
-                      placeholder="Enter any custom instructions for risk assessment"
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="include-recommendations"
-                      checked={includeRecommendations}
-                      onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
-                    />
-                    <Label htmlFor="include-recommendations">Include Recommendations</Label>
-                  </div>
-                </div>
-              )}
-
-              {/* Chronology Options */}
-              {analysisType === "chronology" && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="document-date">Document Date (YYYY-MM-DD)</Label>
-                    <Input
-                      id="document-date"
-                      type="text"
-                      value={documentDate}
-                      onChange={(e) => setDocumentDate(e.target.value)}
-                      placeholder="2024-01-01"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Classification Options */}
-              {analysisType === "classify" && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="document-type-hint">Document Type Hint</Label>
-                    <Input
-                      id="document-type-hint"
-                      value={documentTypeHint}
-                      onChange={(e) => setDocumentTypeHint(e.target.value)}
-                      placeholder="Optional hint about document type"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="classification-focus">Classification Focus</Label>
-                    <Input
-                      id="classification-focus"
-                      value={classificationFocus}
-                      onChange={(e) => setClassificationFocus(e.target.value)}
-                      placeholder="Optional focus area for classification"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Chat Options */}
-              {analysisType === "chat" && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="user-message">Your Question</Label>
-                    <Textarea
-                      id="user-message"
-                      value={userMessage}
-                      onChange={(e) => setUserMessage(e.target.value)}
-                      placeholder="Ask a question about the document"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="chat-mode">Chat Mode</Label>
-                    <Select value={chatMode} onValueChange={(value) => setChatMode(value as "Document Only" | "Layman Explanation" | "Hybrid (Smart)" | "General Chat")}>
-                      <SelectTrigger id="chat-mode">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Document Only">Document Only</SelectItem>
-                        <SelectItem value="Layman Explanation">Layman Explanation</SelectItem>
-                        <SelectItem value="Hybrid (Smart)">Hybrid (Smart)</SelectItem>
-                        <SelectItem value="General Chat">General Chat</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      {chatMode === "Document Only"
-                        ? "Get detailed, professional answers based on the document content"
-                        : chatMode === "Layman Explanation"
-                        ? "Get simple explanations in everyday language"
-                        : chatMode === "Hybrid (Smart)"
-                        ? "Intelligent combination of document content and general knowledge"
-                        : "General legal chat using broad knowledge base"}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="temperature">Response Creativity ({temperature})</Label>
-                    <Slider
-                      id="temperature"
-                      min={0}
-                      max={1}
-                      step={0.1}
-                      value={[temperature]}
-                      onValueChange={(value) => setTemperature(value[0])}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Lower values (0.0-0.3) = more focused and deterministic responses.
-                      Higher values (0.7-1.0) = more creative and varied responses.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="max-tokens">Response Length ({maxTokens} tokens)</Label>
-                    <Slider
-                      id="max-tokens"
-                      min={500}
-                      max={4000}
-                      step={100}
-                      value={[maxTokens]}
-                      onValueChange={(value) => setMaxTokens(value[0])}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Adjust the maximum length of the AI response. Higher values allow for longer, more detailed answers.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Analyze Button */}
-          <Button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || files.length === 0}
-            className="w-full h-11 bg-teal-600 hover:bg-teal-700 text-white font-medium shadow-sm"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <FileText className="mr-2 h-4 w-4" />
-                Analyze Document
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* Right Column - Results Panel (Always Visible) */}
-        <div>
-          {analysisResult ? (
-            <Card className="border border-border bg-card rounded-2xl h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Analysis Results
-                </CardTitle>
-                <CardDescription>
-                  {getAnalysisTitle(analysisType)} for your document
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Accordion type="single" collapsible className="w-full">
-                  <AccordionItem value="analysis">
-                    <AccordionTrigger>{getAnalysisTitle(analysisType)}</AccordionTrigger>
-                    <AccordionContent>
-                      <div className="prose max-w-none">
-                        {/* Extract Text Results */}
-                        {analysisType === "extract-text" && analysisResult && (
-                          <div className="space-y-4">
-                            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                              <p className="text-green-800 font-medium">Text extraction completed</p>
-                            </div>
-                            {analysisResult.tagged_sections && analysisResult.tagged_sections.length > 0 ? (
-                              <div className="space-y-6">
-                                {analysisResult.tagged_sections.map((section, index) => (
-                                  <div key={index} className="border border-border rounded-lg">
-                                    <div className="bg-muted p-3 rounded-t-lg">
-                                      {/* Handle both formats: heading (new) or title (old) */}
-                                      <h3 className="font-semibold text-lg">
-                                        {section.heading || `Section ${index + 1}`}
-                                      </h3>
-                                    </div>
-                                    <div className="p-4">
-                                      <pre className="whitespace-pre-wrap text-sm text-muted-foreground">
-                                        {(section.body || "")
-                                          .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold markdown
-                                          .replace(/\*(.*?)\*/g, '$1')      // Remove italic markdown
-                                          .replace(/__(.*?)__/g, '$1')      // Remove bold underline markdown
-                                          .replace(/_(.*?)_/g, '$1')        // Remove italic underline markdown
-                                          .replace(/^#+\s*(.*?)$/gm, '$1')  // Remove headers
-                                          .replace(/^\s*[\r\n]/gm, '')      // Remove empty lines
-                                        }
-                                      </pre>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : analysisResult.heading ? (
-                              <div className="space-y-3">
-                                <h3 className="font-semibold text-lg">{analysisResult.heading}</h3>
-                                <div className="border border-border rounded-lg p-4">
-                                  <pre className="whitespace-pre-wrap text-sm text-muted-foreground">
-                                    {(analysisResult.body || analysisResult.raw_text || "")
-                                      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold markdown
-                                      .replace(/\*(.*?)\*/g, '$1')      // Remove italic markdown
-                                      .replace(/__(.*?)__/g, '$1')      // Remove bold underline markdown
-                                      .replace(/_(.*?)_/g, '$1')        // Remove italic underline markdown
-                                      .replace(/^#+\s*(.*?)$/gm, '$1')  // Remove headers
-                                      .replace(/^\s*[\r\n]/gm, '')      // Remove empty lines
-                                    }
-                                  </pre>
-                                </div>
-                              </div>
-                            ) : analysisResult.raw_text ? (
-                              <div className="space-y-3">
-                                <h3 className="font-semibold text-lg">Extracted Text</h3>
-                                <div className="border border-border rounded-lg p-4">
-                                  <pre className="whitespace-pre-wrap text-sm text-muted-foreground">
-                                    {(analysisResult.raw_text || "")
-                                      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold markdown
-                                      .replace(/\*(.*?)\*/g, '$1')      // Remove italic markdown
-                                      .replace(/__(.*?)__/g, '$1')      // Remove bold underline markdown
-                                      .replace(/_(.*?)_/g, '$1')        // Remove italic underline markdown
-                                      .replace(/^#+\s*(.*?)$/gm, '$1')  // Remove headers
-                                      .replace(/^\s*[\r\n]/gm, '')      // Remove empty lines
-                                    }
-                                  </pre>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-
-                        {/* Summary Results */}
-                        {analysisType === "summarize" && analysisResult.summary && (
-                          <div className="space-y-4">
-                            <div className="p-4 bg-muted/50 border border-border rounded-lg">
-                              <p className="text-foreground font-medium mb-3">Document Summary:</p>
-                              <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm">
-                                {(analysisResult.summary || "")
-                                  .replace(/\*\*(.*?)\*\*/g, '$1')
-                                  .replace(/\*(.*?)\*/g, '$1')
-                                  .replace(/__(.*)__/g, '$1')
-                                  .replace(/_(.*?)_/g, '$1')
-                                  .replace(/^#+\s*(.*?)$/gm, '$1')
-                                  .replace(/^\s*[\r\n]/gm, '')
-                                }
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Default display for other analysis types */}
-                        {!["extract-text", "summarize", "chronology"].includes(analysisType) && (
-                          <p className="text-muted-foreground whitespace-pre-wrap">
-                            {(analysisResult.analysis || analysisResult.response || analysisResult.summary || "No analysis available.")
-                              .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold markdown
-                              .replace(/\*(.*?)\*/g, '$1')      // Remove italic markdown
-                              .replace(/__(.*?)__/g, '$1')      // Remove bold underline markdown
-                              .replace(/_(.*?)_/g, '$1')        // Remove italic underline markdown
-                              .replace(/^#+\s*(.*?)$/gm, '$1')  // Remove headers
-                              .replace(/^\s*[\r\n]/gm, '')      // Remove empty lines
-                            }
-                          </p>
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-
-                  {/* Chat History Section */}
-                  {analysisResult.chat_history && analysisResult.chat_history.length > 0 && (
-                    <AccordionItem value="chat">
-                      <AccordionTrigger>Chat History</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-4">
-                          {analysisResult.chat_history.map((msg, index) => (
-                            <div key={index} className={`p-4 rounded-lg ${msg.role === 'user' ? 'bg-primary/10' : 'bg-muted'}`}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="font-semibold text-sm">{msg.role === 'user' ? 'You' : 'Assistant'}</span>
-                              </div>
-                              <p className="text-sm text-muted-foreground">{msg.content}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Chat Interface for Continuous Chat */}
-                  {analysisType === "chat" && (
-                    <AccordionItem value="chat-interface">
-                      <AccordionTrigger>Continue Chat</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="border border-border rounded-lg p-4 bg-muted/10">
-                          <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                            <MessageCircle className="h-5 w-5" />
-                            Document Chat
-                          </h3>
-
-                          {/* Chat History Display */}
-                          <div className="mb-4 max-h-60 overflow-y-auto p-3 bg-background rounded-lg border">
-                            {chatHistory.length > 0 ? (
-                              <div className="space-y-3">
-                                {chatHistory.map((msg, index) => (
-                                  <div
-                                    key={index}
-                                    className={`p-3 rounded-lg ${msg.role === 'user'
-                                      ? 'bg-primary/10 ml-4'
-                                      : 'bg-muted mr-4'
-                                      }`}
-                                  >
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-semibold text-sm">
-                                        {msg.role === 'user' ? 'You' : 'Assistant'}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {new Date(msg.timestamp).toLocaleTimeString()}
-                                      </span>
-                                    </div>
-                                    <p className="text-sm">{msg.content}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-muted-foreground text-sm text-center py-4">
-                                Start a conversation by asking a question about your document
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Chat Input */}
-                          <form onSubmit={(e) => {
-                            e.preventDefault();
-                            if (inputMessage.trim() && !isAnalyzing) {
-                              handleContinueChat(inputMessage.trim());
-                              setInputMessage('');
-                            }
-                          }} className="flex gap-2">
-                            <Input
-                              value={inputMessage}
-                              onChange={(e) => setInputMessage(e.target.value)}
-                              placeholder="Ask a question about your document..."
-                              disabled={isAnalyzing}
-                              className="flex-1"
-                            />
-                            <Button
-                              type="submit"
-                              disabled={isAnalyzing || !inputMessage.trim()}
-                              size="sm"
-                            >
-                              {isAnalyzing ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Send className="h-4 w-4" />
-                              )}
-                              <span className="sr-only">Send</span>
-                            </Button>
-                          </form>
-
-                          {/* Export Chat Button */}
-                          <div className="mt-3 flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleExportReport('txt')}
-                              disabled={chatHistory.length === 0}
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              Export Chat (TXT)
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleExportReport('pdf')}
-                              disabled={chatHistory.length === 0}
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              Export Chat (PDF)
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleExportReport('docx')}
-                              disabled={chatHistory.length === 0}
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              Export Chat (DOCX)
-                            </Button>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Clause Analysis Section */}
-                  {analysisResult.clauses && analysisResult.clauses.length > 0 && (
-                    <AccordionItem value="clauses">
-                      <AccordionTrigger>Extracted Clauses ({analysisResult.clauses.length})</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-4">
-                          {analysisResult.clauses.map((clause, index) => (
-                            <div key={index} className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors">
-                              <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-semibold text-base">{clause.type}</h4>
-                                <span className={`px-2 py-1 text-xs rounded-full ${clause.risk_level === "High" ? "bg-red-100 text-red-800" :
-                                  clause.risk_level === "Medium" ? "bg-yellow-100 text-yellow-800" :
-                                    clause.risk_level === "Low" ? "bg-green-100 text-green-800" :
-                                      "bg-blue-100 text-blue-800"
-                                  }`}>
-                                  {clause.risk_level} Risk
-                                </span>
-                              </div>
-                              {clause.heading && (
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  Section: {clause.heading}
-                                </div>
-                              )}
-                              <p className="text-sm text-muted-foreground mb-2">{clause.text}</p>
-                              <div className="text-xs text-muted-foreground flex justify-between">
-                                <span>Page {clause.page}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Clause Analysis from API Response */}
-                  {analysisType === "clauses" && analysisResult.clause_analysis && analysisResult.clause_analysis.length > 0 && (
-                    <AccordionItem value="clauses-api">
-                      <AccordionTrigger>Clause Analysis</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-6">
-                          {analysisResult.clause_analysis.map((section, sectionIndex) => (
-                            <div key={sectionIndex} className="border border-border rounded-lg">
-                              <div className="bg-muted p-3 rounded-t-lg">
-                                <h3 className="font-semibold">{section.heading || `Section ${sectionIndex + 1}`}</h3>
-                              </div>
-                              <div className="p-4 space-y-4">
-                                {section.clauses && section.clauses.map((clause, clauseIndex) => (
-                                  <div key={clauseIndex} className="p-3 border border-border rounded-md">
-                                    <h4 className="font-medium text-primary">{clause.clause}</h4>
-                                    <p className="text-sm text-muted-foreground mt-1">{clause.summary}</p>
-                                    {clause.risk_level && (
-                                      <span className={`inline-block mt-2 px-2 py-1 text-xs rounded-full ${clause.risk_level === "High" ? "bg-red-100 text-red-800" :
-                                        clause.risk_level === "Medium" ? "bg-yellow-100 text-yellow-800" :
-                                          "bg-green-100 text-green-800"
-                                        }`}>
-                                        Risk: {clause.risk_level}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Risk Assessment Section */}
-                  {analysisResult.risks && analysisResult.risks.length > 0 && (
-                    <AccordionItem value="risks">
-                      <AccordionTrigger>Risk Assessment ({analysisResult.risks.length})</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-4">
-                          {analysisResult.risks.slice(2).map((risk, index) => (
-                            <div key={index} className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors">
-                              <div className="flex justify-between items-start mb-2">
-                                <h3 className="font-semibold text-gray-900">{risk.type}</h3>
-                                <span className={`px-2 py-1 text-xs rounded-full ${risk.severity === "High" ? "bg-red-100 text-red-800" :
-                                  risk.severity === "Medium" ? "bg-yellow-100 text-yellow-800" :
-                                    risk.severity === "Low" ? "bg-green-100 text-green-800" :
-                                      "bg-blue-100 text-blue-800"
-                                  }`}>
-                                  {risk.severity} Severity
-                                </span>
-                              </div>
-                              <p className="text-sm text-muted-foreground mb-3">{risk.description}</p>
-                              <div className="p-3 bg-muted/50 rounded-md">
-                                <p className="text-xs font-medium text-primary mb-1">Recommendation:</p>
-                                <p className="text-xs text-muted-foreground">{risk.recommendation}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Risk Assessment from API Response */}
-                  {analysisType === "risk" && analysisResult.risks && analysisResult.risks.length > 0 && (
-                    <AccordionItem value="risks-api">
-                      <AccordionTrigger>Risk Assessment</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-4">
-                          {analysisResult.risks.map((risk, index) => (
-                            <div key={index} className="p-4 border border-border rounded-lg">
-                              {/* Dynamic rendering of all risk object properties */}
-                              {Object.entries(risk).map(([key, value]) => {
-                                // Skip null or undefined values
-                                if (value === null || value === undefined) return null;
-
-                                // Special handling for severity to show colored badge
-                                if (key === 'severity') {
-                                  return (
-                                    <div key={key} className="flex justify-between items-start mb-2">
-                                      <span className="font-medium text-gray-700 capitalize">{key}:</span>
-                                      <span className={`px-2 py-1 text-xs rounded-full ${value === "High" || value === "high" ? "bg-red-100 text-red-800" :
-                                          value === "Medium" || value === "medium" ? "bg-yellow-100 text-yellow-800" :
-                                            value === "Low" || value === "low" ? "bg-green-100 text-green-800" :
-                                              "bg-blue-100 text-blue-800"
-                                        }`}>
-                                        {String(value)}
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                // Special handling for type/clause_type to show as title
-                                if (key === 'type' || key === 'clause_type') {
-                                  return (
-                                    <h3 key={key} className="font-semibold text-primary mb-2">
-                                      {String(value)}
-                                    </h3>
-                                  );
-                                }
-
-                                // Format the key for display
-                                const formattedKey = key
-                                  .replace(/_/g, ' ')
-                                  .replace(/\b\w/g, char => char.toUpperCase());
-
-                                // For complex objects, stringify them
-                                const displayValue = typeof value === 'object'
-                                  ? JSON.stringify(value, null, 2)
-                                  : String(value);
-
-                                return (
-                                  <div key={key} className="mb-2">
-                                    <span className="font-medium text-gray-700 capitalize">{formattedKey}:</span>
-                                    <p className="text-muted-foreground mt-1 whitespace-pre-wrap">
-                                      {displayValue}
-                                    </p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-                  {/* Chronology Section */}
-                  {analysisResult.events && analysisResult.events.length > 0 && (
-                    <AccordionItem value="chronology">
-                      <AccordionTrigger>Chronological Events ({analysisResult.events.length})</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-6">
-                          {/* Table for Chronological Events */}
-                          <div className="border border-border rounded-lg overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="w-[80px]">S.No</TableHead>
-                                  <TableHead className="w-[120px]">Date</TableHead>
-                                  <TableHead className="w-[150px]">Type</TableHead>
-                                  <TableHead>Description</TableHead>
-                                  <TableHead className="w-[120px]">Confidence</TableHead>
-                                  <TableHead className="w-[150px]">Section</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {analysisResult.events.map((event, index) => (
-                                  <TableRow key={index}>
-                                    <TableCell className="font-medium">{index + 1}</TableCell>
-                                    <TableCell>{event.date || "Unknown"}</TableCell>
-                                    <TableCell className="font-medium">{event.type}</TableCell>
-                                    <TableCell className="max-w-md">{event.description}</TableCell>
-                                    <TableCell>
-                                      <div className="flex items-center">
-                                        <span className="mr-2">{(event.confidence * 100).toFixed(1)}%</span>
-                                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                                          <div
-                                            className="bg-blue-600 h-2 rounded-full"
-                                            style={{ width: `${event.confidence * 100}%` }}
-                                          ></div>
-                                        </div>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>{event.date || "N/A"}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Chronology from API Response */}
-                  {analysisType === "chronology" && analysisResult.timeline?.events && (
-                    <AccordionItem value="chronology-api">
-                      <AccordionTrigger>Chronological Events</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-6">
-                          {/* Bar Chart for Event Type Distribution */}
-                          <div className="p-4 border border-border rounded-lg">
-                            <h3 className="font-semibold text-lg mb-4">Event Type Distribution</h3>
-                            <div className="h-64">
-                              <BarChart
-                                width={600}
-                                height={250}
-                                data={getEventTypeDistribution(analysisResult.timeline.events)}
-                                margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                                barSize={30}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis
-                                  dataKey="type"
-                                  angle={-45}
-                                  textAnchor="end"
-                                  height={60}
-                                  tick={{ fontSize: 12 }}
-                                  tickLine={false}
-                                />
-                                <YAxis
-                                  label={{ value: 'Percentage', angle: -90, position: 'insideLeft' }}
-                                  tickLine={false}
-                                  axisLine={false}
-                                  tickFormatter={(value) => `${value}%`}
-                                />
-                                <Tooltip
-                                  formatter={(value: number | string) => [`${Number(value).toFixed(1)}%`, 'Percentage']}
-                                  labelFormatter={(label) => `Event Type: ${label}`}
-                                  contentStyle={{
-                                    backgroundColor: 'white',
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: '0.5rem',
-                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-                                  }}
-                                />
-                                <Legend
-                                  verticalAlign="top"
-                                  height={36}
-                                  formatter={() => 'Event Type Distribution'}
-                                />
-                                <Bar
-                                  dataKey="percentage"
-                                  name="Event Type Percentage"
-                                  radius={[4, 4, 0, 0]}
-                                >
-                                  {getEventTypeDistribution(analysisResult.timeline.events).map((entry, index) => (
-                                    <Cell
-                                      key={`cell-${index}`}
-                                      fill={getBarColor(index)}
-                                    />
-                                  ))}
-                                  <LabelList
-                                    dataKey="percentage"
-                                    position="top"
-                                    formatter={(value: number) => `${value.toFixed(1)}%`}
-                                    style={{ fontSize: '12px', fill: '#6b7280' }}
-                                  />
-                                </Bar>
-                              </BarChart>
-                            </div>
-                          </div>
-
-                          {/* Table for Chronological Events */}
-                          <div className="border border-border rounded-lg overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="w-[80px]">S.No</TableHead>
-                                  <TableHead className="w-[120px]">Date</TableHead>
-                                  <TableHead className="w-[150px]">Type</TableHead>
-                                  <TableHead>Description</TableHead>
-                                  <TableHead className="w-[120px]">Confidence</TableHead>
-                                  <TableHead className="w-[150px]">Section</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {analysisResult.timeline.events.map((event, index) => (
-                                  <TableRow key={index}>
-                                    <TableCell className="font-medium">{index + 1}</TableCell>
-                                    <TableCell>
-                                      {event.temporal_expressions && event.temporal_expressions.length > 0
-                                        ? event.temporal_expressions[0].text
-                                        : "Unknown"}
-                                    </TableCell>
-                                    <TableCell className="font-medium">{event.event_type}</TableCell>
-                                    <TableCell className="max-w-md">{event.description}</TableCell>
-                                    <TableCell>
-                                      <div className="flex items-center">
-                                        <span className="mr-2">{(event.confidence_score * 100).toFixed(1)}%</span>
-                                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                                          <div
-                                            className="bg-blue-600 h-2 rounded-full"
-                                            style={{ width: `${event.confidence_score * 100}%` }}
-                                          ></div>
-                                        </div>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>
-                                      {event.temporal_expressions && event.temporal_expressions.length > 0
-                                        ? event.temporal_expressions.map((expr, exprIndex) => (
-                                          <span key={exprIndex} className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded mr-1 mb-1">
-                                            {expr.text}
-                                          </span>
-                                        ))
-                                        : "N/A"}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Document Classification Section */}
-                  {analysisResult.classification && (
-                    <AccordionItem value="classification">
-                      <AccordionTrigger>Document Classification</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="p-4 bg-muted rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <h4 className="font-semibold text-lg">{analysisResult.classification.type}</h4>
-                              <p className="text-sm text-muted-foreground mt-1">{analysisResult.classification.subject}</p>
-                            </div>
-                            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm">
-                              {(analysisResult.classification.confidence * 100).toFixed(0)}% Confidence
-                            </span>
-                          </div>
-                          {analysisResult.classification.confidence < 0.7 && (
-                            <p className="text-xs text-muted-foreground mt-2 italic">
-                              Note: Low confidence score. Consider providing more context for better classification.
-                            </p>
-                          )}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-
-                  {/* Sources Section */}
-                  <AccordionItem value="sources">
-                    <AccordionTrigger>Sources</AccordionTrigger>
-                    <AccordionContent>
-                      <div className="space-y-3">
-                        {/* Show only sources related to the last risk assessment if in risk analysis mode */}
-                        {analysisType === "risk" && analysisResult.risks && analysisResult.risks.length > 0 ? (
-                          (() => {
-                            // For risk analysis, we'll show the general sources
-                            return analysisResult.sources?.map((source, index) => (
-                              <div key={index} className="p-3 border border-border rounded-lg">
-                                <p className="font-medium">Source {index + 1}</p>
-                                <p className="text-sm text-muted-foreground">{source.file_name}</p>
-                                {source.page && <p className="text-xs text-muted-foreground">Page: {source.page}</p>}
-                              </div>
-                            ));
-                          })()
-                        ) : (
-                          analysisResult.sources?.map((source, index) => (
-                            <div key={index} className="p-3 border border-border rounded-lg">
-                              <p className="font-medium">Source {index + 1}</p>
-                              <p className="text-sm text-muted-foreground">{source.file_name}</p>
-                              {source.page && <p className="text-xs text-muted-foreground">Page: {source.page}</p>}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-
-                  {/* Processing Metadata Section */}
-                  {(analysisResult.tokens_used > 0 || analysisResult.processing_time > 0) && (
-                    <AccordionItem value="metadata">
-                      <AccordionTrigger>Processing Metadata</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {analysisResult.tokens_used > 0 && (
-                            <div className="p-3 border border-border rounded-lg">
-                              <p className="text-sm text-muted-foreground">Tokens Used</p>
-                              <p className="font-medium">{analysisResult.tokens_used.toLocaleString()}</p>
-                            </div>
-                          )}
-                          {analysisResult.processing_time > 0 && (
-                            <div className="p-3 border border-border rounded-lg">
-                              <p className="text-sm text-muted-foreground">Processing Time</p>
-                              <p className="font-medium">{analysisResult.processing_time.toFixed(2)}s</p>
-                            </div>
-                          )}
-                          <div className="p-3 border border-border rounded-lg">
-                            <p className="text-sm text-muted-foreground">Analysis ID</p>
-                            <p className="font-medium text-xs truncate" title={analysisResult.analysis_id}>
-                              {analysisResult.analysis_id}
-                            </p>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
-                </Accordion>
-              </CardContent>
-            </Card>
-          ) : (
-            // Placeholder when no analysis result
-            <div className="h-full min-h-[400px] flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50 p-6 text-center">
-              <div className="h-16 w-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                <BarChart3 className="h-8 w-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Ready to Analyze</h3>
-              <p className="text-muted-foreground max-w-xs mx-auto">
-                Upload documents and select an analysis mode to see detailed insights here.
-              </p>
+            {/* Analyze Button - Full Width */}
+            <div className="col-span-full">
+              <Button
+                onClick={handleAnalyze}
+                disabled={isAnalyzing || files.length === 0}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-200"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Re-analyzing...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-5 w-5" />
+                    Re-analyze Document
+                  </>
+                )}
+              </Button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
+    </div>
     </div>
   );
 };

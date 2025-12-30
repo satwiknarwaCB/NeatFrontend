@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, Cell } from 'recharts';
 import { exportReport } from '@/services/legalApi';
 import { processDocuments, extractText, summarizeDocuments, analyzeClauses, assessRisks, extractChronology, classifyDocument } from '@/services/documentAnalysisApi';
-import { chatWithAI } from '@/services/legalChatbotApi';
+import { chatWithDocument } from '@/services/legalApi';
 import { Slider } from "@/components/ui/slider";
 
 // Types for our API responses
@@ -515,7 +515,7 @@ const PublicInteract = () => {
           body: formData
         });
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) {
           const error: any = new Error('API Error');
           error.status = response.status;
@@ -527,15 +527,21 @@ const PublicInteract = () => {
           }
           throw error;
         }
-        
+
         data = await response.json();
       } else {
-        // For chat operations, use the chatWithAI service function
+        // For chat operations, use the chatWithDocument service function
         const message = formData.get('message') as string || userMessage;
         const mode = formData.get('mode') as 'document' | 'layman' || chatMode;
-        // Map old mode values to new chatbotMode values
-        const chatbotMode = chatMode;
-        data = await chatWithAI(message, chatbotMode);
+        // Build FormData for document chat
+        const chatFormData = new FormData();
+        files.forEach((fileObj) => {
+          if (fileObj.file) {
+            chatFormData.append('file', fileObj.file);
+          }
+        });
+        chatFormData.append('user_message', message);
+        data = await chatWithDocument(chatFormData);
         clearTimeout(timeoutId);
       }
 
@@ -550,18 +556,25 @@ const PublicInteract = () => {
       // Check if this is the summarize endpoint response with summaries array
       if (analysisType === "summarize" && data.summaries && Array.isArray(data.summaries) && data.summaries.length > 0) {
         const firstSummary = data.summaries[0];
-        // Access the summary field directly as per backend structure
         summaryValue = firstSummary.summary || "";
       } else {
-        // Fallback to direct summary access
-        // Fallback to direct summary access
-          summaryValue = data.summary || "";
+        summaryValue = data.summary || "";
+      }
+
+      // Check if summaryValue is stringified JSON and pre-parse it if so
+      if (typeof summaryValue === 'string' && summaryValue.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(summaryValue);
+          if (parsed.summary) summaryValue = parsed.summary;
+        } catch (e) {
+          // Keep as is if not valid JSON
+        }
       }
 
       // Format the response based on the API structure and analysis type
       result = {
-        analysis: data.assistant_message || data.response || data.analysis || summaryValue || data.raw_text || 
-                 (analysisType === "chronology" && data.timeline?.events ? "" : "Analysis completed successfully."),
+        analysis: data.assistant_message || data.response || data.analysis || summaryValue || data.raw_text ||
+          (analysisType === "chronology" && data.timeline?.events ? "" : "Analysis completed successfully."),
         sources: files.map(f => ({ file_name: f.name })),
         tokens_used: data.tokens_used || data.processing_metadata?.tokens_used || 0,
         processing_time: data.processing_time || data.processing_metadata?.processing_time || data.total_processing_time || 0,
@@ -574,7 +587,7 @@ const PublicInteract = () => {
         clause_analysis: data.clause_analysis,
         risks: data.risks,
         timeline: data.timeline,
-        classification: data.classification,
+        classification: data.classification || data.document_classification,
         events: data.events,
         clauses: data.clause_analysis?.clauses,
         chat_history: data.chat_history,
@@ -607,7 +620,7 @@ const PublicInteract = () => {
       } else {
         console.error('Error message:', error.message);
       }
-      
+
       if (error.name === 'AbortError') {
         toast({
           title: "Analysis timeout",
@@ -1125,10 +1138,10 @@ const PublicInteract = () => {
                         {chatMode === "Document Only"
                           ? "Get detailed, professional answers based on the document content"
                           : chatMode === "Layman Explanation"
-                          ? "Get simple explanations in everyday language"
-                          : chatMode === "Hybrid (Smart)"
-                          ? "Intelligent combination of document content and general knowledge"
-                          : "General legal chat using broad knowledge base"}
+                            ? "Get simple explanations in everyday language"
+                            : chatMode === "Hybrid (Smart)"
+                              ? "Intelligent combination of document content and general knowledge"
+                              : "General legal chat using broad knowledge base"}
                       </p>
                     </div>
 
@@ -1544,24 +1557,23 @@ const PublicInteract = () => {
                                 {Object.entries(risk).map(([key, value]) => {
                                   // Skip null or undefined values
                                   if (value === null || value === undefined) return null;
-                                  
+
                                   // Special handling for severity to show colored badge
                                   if (key === 'severity') {
                                     return (
                                       <div key={key} className="flex justify-between items-start mb-2">
                                         <span className="font-medium text-gray-700 capitalize">{key}:</span>
-                                        <span className={`px-2 py-1 text-xs rounded-full ${
-                                          value === "High" || value === "high" ? "bg-red-100 text-red-800" :
+                                        <span className={`px-2 py-1 text-xs rounded-full ${value === "High" || value === "high" ? "bg-red-100 text-red-800" :
                                           value === "Medium" || value === "medium" ? "bg-yellow-100 text-yellow-800" :
-                                          value === "Low" || value === "low" ? "bg-green-100 text-green-800" :
-                                            "bg-blue-100 text-blue-800"
-                                        }`}>
+                                            value === "Low" || value === "low" ? "bg-green-100 text-green-800" :
+                                              "bg-blue-100 text-blue-800"
+                                          }`}>
                                           {String(value)}
                                         </span>
                                       </div>
                                     );
                                   }
-                                  
+
                                   // Special handling for type/clause_type to show as title
                                   if (key === 'type' || key === 'clause_type') {
                                     return (
@@ -1570,17 +1582,17 @@ const PublicInteract = () => {
                                       </h3>
                                     );
                                   }
-                                  
+
                                   // Format the key for display
                                   const formattedKey = key
                                     .replace(/_/g, ' ')
                                     .replace(/\b\w/g, char => char.toUpperCase());
-                                  
+
                                   // For complex objects, stringify them
-                                  const displayValue = typeof value === 'object' 
-                                    ? JSON.stringify(value, null, 2) 
+                                  const displayValue = typeof value === 'object'
+                                    ? JSON.stringify(value, null, 2)
                                     : String(value);
-                                  
+
                                   return (
                                     <div key={key} className="mb-2">
                                       <span className="font-medium text-gray-700 capitalize">{formattedKey}:</span>
@@ -2050,24 +2062,23 @@ const PublicInteract = () => {
                           {Object.entries(risk).map(([key, value]) => {
                             // Skip null or undefined values
                             if (value === null || value === undefined) return null;
-                            
+
                             // Special handling for severity to show colored badge
                             if (key === 'severity') {
                               return (
                                 <div key={key} className="flex justify-between items-start mb-2">
                                   <span className="font-medium text-gray-700 capitalize">{key}:</span>
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                    value === 'High' || value === 'high' ? 'bg-red-100 text-red-800' :
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${value === 'High' || value === 'high' ? 'bg-red-100 text-red-800' :
                                     value === 'Medium' || value === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                    value === 'Low' || value === 'low' ? 'bg-green-100 text-green-800' :
-                                      'bg-blue-100 text-blue-800'
-                                  }`}>
+                                      value === 'Low' || value === 'low' ? 'bg-green-100 text-green-800' :
+                                        'bg-blue-100 text-blue-800'
+                                    }`}>
                                     {String(value)}
                                   </span>
                                 </div>
                               );
                             }
-                            
+
                             // Special handling for type/clause_type to show as title
                             if (key === 'type' || key === 'clause_type') {
                               return (
@@ -2076,17 +2087,17 @@ const PublicInteract = () => {
                                 </h3>
                               );
                             }
-                            
+
                             // Format the key for display
                             const formattedKey = key
                               .replace(/_/g, ' ')
                               .replace(/\b\w/g, char => char.toUpperCase());
-                            
+
                             // For complex objects, stringify them
-                            const displayValue = typeof value === 'object' 
-                              ? JSON.stringify(value, null, 2) 
+                            const displayValue = typeof value === 'object'
+                              ? JSON.stringify(value, null, 2)
                               : String(value);
-                            
+
                             return (
                               <div key={key} className="mb-2">
                                 <span className="font-medium text-gray-700 capitalize">{formattedKey}:</span>
@@ -2098,31 +2109,138 @@ const PublicInteract = () => {
                           })}
                         </div>
                       ))}
-                    </div>                  ) : analysisType === "chronology" && analysisResult.timeline?.events && analysisResult.timeline.events.length > 0 ? (
-                    /* Chronology Builder Results */
-                    <div className="space-y-4">
-                      {analysisResult.timeline.events.map((event, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
-                          <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-semibold text-gray-900">{event.event_type}</h3>
-                            <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              {(event.confidence_score * 100).toFixed(1)}% Confidence
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700 mb-3">{event.description}</p>
-                          {event.temporal_expressions && event.temporal_expressions.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {event.temporal_expressions.map((expr, exprIdx) => (
-                                <span key={exprIdx} className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded">
-                                  {expr.text}
-                                </span>
-                              ))}
+                    </div>) : analysisType === "chronology" && analysisResult.timeline?.events && analysisResult.timeline.events.length > 0 ? (
+                      /* Chronology Builder Results */
+                      <div className="space-y-4">
+                        {analysisResult.timeline.events.map((event, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-start mb-2">
+                              <h3 className="font-semibold text-gray-900">{event.event_type}</h3>
+                              <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                {(event.confidence_score * 100).toFixed(1)}% Confidence
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
+                            <p className="text-sm text-gray-700 mb-3">{event.description}</p>
+                            {event.temporal_expressions && event.temporal_expressions.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {event.temporal_expressions.map((expr, exprIdx) => (
+                                  <span key={exprIdx} className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded">
+                                    {expr.text}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : analysisType === "classify" && (analysisResult.classification || analysisResult.analysis) ? (
+                      /* Document Classification Results */
+                      <div className="bg-white p-6 rounded-xl border border-teal-100 shadow-sm">
+                        {analysisResult.classification ? (
+                          <div className="space-y-6">
+                            <div className="flex justify-between items-start">
+                              <div className="space-y-1">
+                                <span className="text-xs font-bold text-teal-600 uppercase tracking-wider">Document Type</span>
+                                <h4 className="text-2xl font-bold text-gray-900">
+                                  {analysisResult.classification.document_type || "Unclassified"}
+                                </h4>
+                              </div>
+                              <div className="text-right space-y-1">
+                                <span className="text-xs font-bold text-teal-600 uppercase tracking-wider">Importance Level</span>
+                                <div className="flex items-center justify-end gap-2">
+                                  <div className="text-2xl font-bold text-gray-900">
+                                    {analysisResult.classification.importance !== undefined
+                                      ? `${(analysisResult.classification.importance * 100).toFixed(0)}%`
+                                      : "N/A"}
+                                  </div>
+                                  {analysisResult.classification.importance !== undefined && (
+                                    <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-teal-500 rounded-full"
+                                        style={{ width: `${analysisResult.classification.importance * 100}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-gray-100">
+                              <span className="text-xs font-bold text-teal-600 uppercase tracking-wider">Subject Analysis</span>
+                              <p className="mt-2 text-gray-700 leading-relaxed">
+                                {analysisResult.classification.subject || "No subject details provided."}
+                              </p>
+                            </div>
+
+                            {/* Fallback for any other fields like 'category' or 'score' */}
+                            {Object.entries(analysisResult.classification)
+                              .filter(([key]) => !['document_type', 'importance', 'subject'].includes(key))
+                              .map(([key, value]) => (
+                                <div key={key} className="pt-4 border-t border-gray-100">
+                                  <span className="text-xs font-bold text-teal-600 uppercase tracking-wider">
+                                    {key.replace(/_/g, ' ').toUpperCase()}
+                                  </span>
+                                  <p className="mt-2 text-gray-700">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                  </p>
+                                </div>
+                              ))
+                            }
+                          </div>
+                        ) : (
+                          <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">
+                            {analysisResult.analysis}
+                          </p>
+                        )}
+                      </div>
+                    ) : analysisType === "summarize" ? (
+                      /* Enhanced Document Summary Results */
+                      <div className="space-y-6">
+                        {(() => {
+                          let displaySummary = analysisResult.summary || analysisResult.analysis || "";
+                          let keyPoints: string[] = [];
+
+                          // Attempt to parse if it's still JSON stringified in the result object
+                          if (typeof displaySummary === 'string' && displaySummary.trim().startsWith('{')) {
+                            try {
+                              const parsed = JSON.parse(displaySummary);
+                              displaySummary = parsed.summary || displaySummary;
+                              keyPoints = parsed.key_points || [];
+                            } catch (e) { }
+                          }
+
+                          return (
+                            <div className="space-y-6">
+                              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                                <h4 className="text-xs font-semibold text-teal-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                  <FileText className="h-3.5 w-3.5" />
+                                  Document Summary
+                                </h4>
+                                <p className="text-gray-700 leading-relaxed text-base">
+                                  {displaySummary.replace(/^["{]|["}]$/g, '').trim()}
+                                </p>
+                              </div>
+
+                              {keyPoints.length > 0 && (
+                                <div className="space-y-4">
+                                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-1">Key Takeaways</h4>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {keyPoints.map((point, idx) => (
+                                      <div key={idx} className="bg-gray-50/50 p-4 rounded-lg border border-gray-100 flex gap-3 transition-all hover:bg-white hover:shadow-sm">
+                                        <div className="h-5 w-5 rounded-full bg-teal-100/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                          <CheckCircle2 className="h-3 w-3 text-teal-600" />
+                                        </div>
+                                        <p className="text-sm text-gray-600 leading-relaxed">{point}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : (
                     /* Default: Summary/Analysis text */
                     <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">
                       {analysisResult.summary || analysisResult.analysis || "Analysis completed successfully."}
