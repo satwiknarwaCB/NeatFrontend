@@ -69,8 +69,8 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
                         key={item.path}
                         to={item.path}
                         className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 ${active
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           }`}
                       >
                         <Icon className="h-5 w-5" />
@@ -82,8 +82,8 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
 
                 <div className="p-4">
                   <Link to="/dashboard/settings" className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 ${isActive("/dashboard/settings")
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}>
                     <Settings className="h-5 w-5" />
                     <span className="font-medium text-sm">Settings</span>

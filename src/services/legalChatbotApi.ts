@@ -320,3 +320,283 @@ export const chatWithDocument = async (
         throw error;
     }
 };
+
+// ============================================
+// Document Chat Session API (Port 8000)
+// ============================================
+
+export interface DocumentUploadResponse {
+    success: boolean;
+    session_id: string;
+    filename: string;
+    char_count: number;
+    chunk_count: number;
+    file_type: string;
+    preview: string;
+}
+
+export interface DocumentChatResponse {
+    success: boolean;
+    answer: string;
+    document_name: string;
+    sources: Array<{ type: string; filename: string }>;
+    session_id: string;
+}
+
+export interface DocumentSessionInfo {
+    success: boolean;
+    filename: string;
+    char_count: number;
+    chat_history_length: number;
+}
+
+// Upload document for chat session
+export const uploadDocumentForChat = async (file: File): Promise<DocumentUploadResponse> => {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        console.log('Uploading document for chat:', file.name);
+        const response = await legalChatbotApiClient.postFormData<DocumentUploadResponse>(
+            '/document-chat/upload',
+            formData
+        );
+        console.log('Document upload response:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to upload document for chat:', error);
+        throw error;
+    }
+};
+
+// Chat with uploaded document
+export const chatWithDocumentSession = async (
+    sessionId: string,
+    query: string,
+    includeLegalKnowledge: boolean = true
+): Promise<DocumentChatResponse> => {
+    try {
+        console.log('Chatting with document session:', sessionId);
+        const response = await legalChatbotApiClient.post<any, DocumentChatResponse>(
+            `/document-chat/${sessionId}/chat`,
+            {
+                query: query,
+                include_legal_knowledge: includeLegalKnowledge
+            }
+        );
+        console.log('Document chat response:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to chat with document:', error);
+        throw error;
+    }
+};
+
+// Get document session info
+export const getDocumentSessionInfo = async (sessionId: string): Promise<DocumentSessionInfo> => {
+    try {
+        const response = await legalChatbotApiClient.get<DocumentSessionInfo>(
+            `/document-chat/${sessionId}/info`
+        );
+        return response;
+    } catch (error) {
+        console.error('Failed to get document session info:', error);
+        throw error;
+    }
+};
+
+// Delete document session
+export const deleteDocumentSession = async (sessionId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+        console.log('Deleting document session:', sessionId);
+        const response = await legalChatbotApiClient.delete<{ success: boolean; message: string }>(
+            `/document-chat/${sessionId}`
+        );
+        console.log('Document session deleted:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to delete document session:', error);
+        throw error;
+    }
+};
+
+// ============================================
+// Agents API (Port 8000)
+// ============================================
+
+export interface AgentInfo {
+    id: string;
+    name: string;
+    description: string;
+    capabilities: string[];
+    is_active: boolean;
+}
+
+export interface AgentsListResponse {
+    success: boolean;
+    agents: AgentInfo[];
+}
+
+export interface AgentSessionResponse {
+    success: boolean;
+    session_id: string;
+    agent_id: string;
+    agent_name: string;
+    created_at: string;
+}
+
+export interface AgentChatRequest {
+    session_id: string;
+    message: string;
+    context?: {
+        include_legal_knowledge?: boolean;
+        include_case_law?: boolean;
+    };
+}
+
+export interface AgentChatResponse {
+    success: boolean;
+    agent_id: string;
+    session_id: string;
+    response: string;
+    sources?: Array<{
+        type: string;
+        reference: string;
+    }>;
+    tokens_used?: number;
+    timestamp: string;
+}
+
+export interface AgentHistoryMessage {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    timestamp: string;
+}
+
+export interface AgentHistoryResponse {
+    success: boolean;
+    session_id: string;
+    agent_id: string;
+    messages: AgentHistoryMessage[];
+    total_messages: number;
+}
+
+export interface AgentUploadResponse {
+    success: boolean;
+    session_id: string;
+    document_id: string;
+    filename: string;
+    file_type: string;
+    char_count: number;
+    chunk_count: number;
+    preview: string;
+}
+
+// Get all available agents
+export const getAgents = async (): Promise<AgentsListResponse> => {
+    try {
+        console.log('Fetching available agents...');
+        const response = await legalChatbotApiClient.get<AgentsListResponse>('/agents');
+        console.log('Agents response:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to get agents:', error);
+        throw error;
+    }
+};
+
+// Create agent session
+export const createAgentSession = async (agentId: string): Promise<AgentSessionResponse> => {
+    try {
+        console.log('Creating agent session for:', agentId);
+        const response = await legalChatbotApiClient.post<null, AgentSessionResponse>(
+            `/agents/${agentId}/session`,
+            null
+        );
+        console.log('Agent session created:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to create agent session:', error);
+        throw error;
+    }
+};
+
+// Chat with agent
+export const chatWithAgent = async (
+    agentId: string,
+    request: AgentChatRequest
+): Promise<AgentChatResponse> => {
+    try {
+        console.log('Chatting with agent:', agentId, request);
+        const response = await legalChatbotApiClient.post<AgentChatRequest, AgentChatResponse>(
+            `/agents/${agentId}/chat`,
+            request
+        );
+        console.log('Agent chat response:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to chat with agent:', error);
+        throw error;
+    }
+};
+
+// Get agent session history
+export const getAgentSessionHistory = async (
+    agentId: string,
+    sessionId: string
+): Promise<AgentHistoryResponse> => {
+    try {
+        console.log('Getting agent session history:', agentId, sessionId);
+        const response = await legalChatbotApiClient.get<AgentHistoryResponse>(
+            `/agents/${agentId}/session/${sessionId}/history`
+        );
+        console.log('Agent history response:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to get agent session history:', error);
+        throw error;
+    }
+};
+
+// Upload document to agent
+export const uploadDocumentToAgent = async (
+    agentId: string,
+    file: File,
+    sessionId: string
+): Promise<AgentUploadResponse> => {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('session_id', sessionId);
+
+        console.log('Uploading document to agent:', agentId, file.name);
+        const response = await legalChatbotApiClient.postFormData<AgentUploadResponse>(
+            `/agents/${agentId}/upload`,
+            formData
+        );
+        console.log('Agent upload response:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to upload document to agent:', error);
+        throw error;
+    }
+};
+
+// Delete agent session
+export const deleteAgentSession = async (
+    agentId: string,
+    sessionId: string
+): Promise<{ success: boolean; message: string }> => {
+    try {
+        console.log('Deleting agent session:', agentId, sessionId);
+        const response = await legalChatbotApiClient.delete<{ success: boolean; message: string }>(
+            `/agents/${agentId}/session/${sessionId}`
+        );
+        console.log('Agent session deleted:', response);
+        return response;
+    } catch (error) {
+        console.error('Failed to delete agent session:', error);
+        throw error;
+    }
+};

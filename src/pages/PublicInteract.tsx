@@ -130,7 +130,7 @@ const PublicInteract = () => {
   const [maxTokens, setMaxTokens] = useState<number>(2000);
 
   // Add chat history state to the component
-  const [chatHistory, setChatHistory] = useState<Array<{ role: string, content: string, timestamp: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{ role: string, content: string, timestamp: string, attachments?: string[] }>>([]);
 
   // Add input message state for chat
   const [inputMessage, setInputMessage] = useState('');
@@ -695,7 +695,8 @@ const PublicInteract = () => {
       const newUserMessage = {
         role: 'user' as const,
         content: newMessage,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        attachments: files.filter(f => f.file && f.file.type.startsWith('image/')).map(f => URL.createObjectURL(f.file!))
       };
 
       const newAssistantMessage = {
@@ -850,7 +851,7 @@ const PublicInteract = () => {
                     <input
                       type="file"
                       multiple
-                      accept=".pdf"
+                      accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                       onChange={handleFileUpload}
                       className="hidden"
                       id="file-upload"
@@ -875,9 +876,15 @@ const PublicInteract = () => {
                         {files.map((file, idx) => (
                           <div
                             key={idx}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs"
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs shadow-sm animate-in fade-in"
                           >
-                            <FileIcon className="h-3 w-3 text-teal-600" />
+                            {file.file && file.name.match(/\.(png|jpg|jpeg|webp)$/i) ? (
+                              <div className="h-5 w-5 rounded overflow-hidden flex-shrink-0 border border-teal-100 bg-white">
+                                <img src={URL.createObjectURL(file.file)} alt="preview" className="h-full w-full object-cover" />
+                              </div>
+                            ) : (
+                              <FileIcon className="h-3 w-3 text-teal-600" />
+                            )}
                             <span className="font-medium text-teal-900 max-w-[150px] truncate">
                               {file.name}
                             </span>
@@ -1373,6 +1380,15 @@ const PublicInteract = () => {
                                         </span>
                                       </div>
                                       <p className="text-sm">{msg.content}</p>
+                                      {msg.attachments && msg.attachments.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {msg.attachments.map((url, i) => (
+                                            <div key={i} className="max-w-[150px] rounded-md overflow-hidden border border-border">
+                                              <img src={url} alt="attachment" className="w-full h-auto object-cover" />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -2469,7 +2485,7 @@ const PublicInteract = () => {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf"
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                     onChange={handleFileUpload}
                     className="hidden"
                     id="file-upload-after"

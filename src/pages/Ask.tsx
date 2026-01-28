@@ -35,7 +35,8 @@ import {
   Wand2,
   Globe,
   Shield,
-  Paperclip
+  Paperclip,
+  X
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  attachments?: string[];
 }
 
 const Ask = () => {
@@ -61,7 +63,7 @@ const Ask = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [researchResult, setResearchResult] = useState<LegalResearchResponse | null>(null);
   const [responseMode, setResponseMode] = useState<"Hybrid (Smart)" | "Document Only" | "General Chat" | "Layman Explanation">(!isPublicMode ? "Hybrid (Smart)" : "Layman Explanation");
-  
+
   // File upload state
   const [files, setFiles] = useState<Array<{ name: string; file: File }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -337,7 +339,8 @@ const Ask = () => {
         id: Date.now().toString(),
         role: "user",
         content: userMessageContent,
-        timestamp: new Date()
+        timestamp: new Date(),
+        attachments: files.filter(f => f.file.type.startsWith('image/')).map(f => URL.createObjectURL(f.file))
       };
 
       const newMessages = [...messages, userMessage];
@@ -361,7 +364,7 @@ const Ask = () => {
             title: "Files uploaded",
             description: `${files.length} file(s) uploaded successfully.`,
           });
-          
+
           // Clear uploaded files
           setFiles([]);
         } catch (uploadError) {
@@ -450,10 +453,10 @@ const Ask = () => {
       // Use the selected response mode
       const mode = responseMode;
       // Map old mode values to new chatbotMode values
-      const chatbotMode = (mode as string) === 'document' ? 'Document Only' : 
-                        (mode as string) === 'layman' ? 'Layman Explanation' : 
-                        (mode as string) === 'general' ? 'General Chat' : 
-                        (mode as string) === 'hybrid' ? 'Hybrid (Smart)' : mode;
+      const chatbotMode = (mode as string) === 'document' ? 'Document Only' :
+        (mode as string) === 'layman' ? 'Layman Explanation' :
+          (mode as string) === 'general' ? 'General Chat' :
+            (mode as string) === 'hybrid' ? 'Hybrid (Smart)' : mode;
 
       // Call the real API
       const response = await chatWithAI(query, chatbotMode);
@@ -622,17 +625,17 @@ const Ask = () => {
   const formatLegalContent = (content: string) => {
     // For testing - log the content to see what we're working with
     console.log("Formatting content:", content);
-    
+
     // Split content into lines
     const lines = content.split('\n');
     const formattedElements = [];
     let listItems = [];
     let inList = false;
     let paragraphBuffer = [];
-    
+
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
-      
+
       // Skip empty lines but flush buffers
       if (trimmedLine === '') {
         // Flush paragraph buffer
@@ -646,7 +649,7 @@ const Ask = () => {
         }
         return;
       }
-      
+
       // Handle headings (more comprehensive pattern matching)
       if (
         // Markdown headers
@@ -665,7 +668,7 @@ const Ask = () => {
           );
           paragraphBuffer = [];
         }
-        
+
         // Flush any existing list
         if (inList && listItems.length > 0) {
           formattedElements.push(
@@ -680,13 +683,13 @@ const Ask = () => {
           listItems = [];
           inList = false;
         }
-        
+
         // Format as heading
         const headingText = trimmedLine
           .replace(/^#{1,3}\s/, '')
           .replace(/\*$/, '')
           .replace(/:$/, '');
-        
+
         formattedElements.push(
           <h2 key={`heading-${index}`} className="text-xl font-bold text-gray-800 mt-6 mb-3 flex items-center">
             <Scale className="h-5 w-5 mr-2 text-gray-600" />
@@ -696,7 +699,7 @@ const Ask = () => {
       }
       // Handle list items (more comprehensive pattern matching)
       else if (
-        trimmedLine.match(/^[\*\-\d\+]\s/) || 
+        trimmedLine.match(/^[\*\-\d\+]\s/) ||
         trimmedLine.match(/^\s*[\*\-\d\+]/) ||
         (trimmedLine.startsWith('+ ') || trimmedLine.startsWith('- '))
       ) {
@@ -709,21 +712,21 @@ const Ask = () => {
           );
           paragraphBuffer = [];
         }
-        
+
         const listItemText = trimmedLine
           .replace(/^[\*\-\d\+]\s/, '')
           .replace(/^\s*[\*\-\d\+]/, '')
           .replace(/^\+ /, '')
           .replace(/^- /, '')
           .trim();
-        
+
         listItems.push(listItemText);
         inList = true;
       }
       // Handle callout/important notes
       else if (
-        trimmedLine.includes('IMPORTANT:') || 
-        trimmedLine.includes('NOTE:') || 
+        trimmedLine.includes('IMPORTANT:') ||
+        trimmedLine.includes('NOTE:') ||
         trimmedLine.includes('For example,') ||
         trimmedLine.includes('Remember,')
       ) {
@@ -736,7 +739,7 @@ const Ask = () => {
           );
           paragraphBuffer = [];
         }
-        
+
         // Flush any existing list
         if (inList && listItems.length > 0) {
           formattedElements.push(
@@ -751,7 +754,7 @@ const Ask = () => {
           listItems = [];
           inList = false;
         }
-        
+
         // Format as callout
         formattedElements.push(
           <div key={`callout-${index}`} className="bg-gray-100 border border-gray-300 rounded-lg p-4 my-4">
@@ -766,7 +769,7 @@ const Ask = () => {
         paragraphBuffer.push(trimmedLine);
       }
     });
-    
+
     // Flush any remaining paragraph buffer
     if (paragraphBuffer.length > 0) {
       formattedElements.push(
@@ -775,7 +778,7 @@ const Ask = () => {
         </p>
       );
     }
-    
+
     // Flush any remaining list
     if (inList && listItems.length > 0) {
       formattedElements.push(
@@ -788,7 +791,7 @@ const Ask = () => {
         </ul>
       );
     }
-    
+
     return formattedElements;
   };
 
@@ -919,12 +922,12 @@ const Ask = () => {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf"
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                     onChange={handleFileUpload}
                     ref={fileInputRef}
                     className="hidden"
                   />
-                  <Textarea                    value={input}
+                  <Textarea value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Message Legal AId..."
                     className="min-h-[50px] max-h-[200px] resize-none flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -1168,6 +1171,17 @@ const Ask = () => {
                       <div className="whitespace-pre-wrap text-sm">
                         {message.role === "assistant" ? formatLegalContent(displayContent) : displayContent}
                       </div>
+
+                      {/* Image Attachments */}
+                      {message.attachments && message.attachments.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {message.attachments.map((url, i) => (
+                            <div key={i} className="max-w-[200px] rounded-lg overflow-hidden border border-border shadow-sm">
+                              <img src={url} alt="attachment" className="w-full h-auto object-contain cursor-zoom-in" onClick={() => window.open(url, '_blank')} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {message.role === "user" && (
                       <Avatar className="h-8 w-8 flex-shrink-0">
@@ -1201,6 +1215,42 @@ const Ask = () => {
 
           {/* Input Area - Floating */}
           <div className="absolute bottom-6 left-0 right-0 px-4 z-10 pointer-events-none">
+            {/* File Previews with Thumbnails */}
+            {files.length > 0 && (
+              <div className="max-w-5xl mx-auto mb-3 flex flex-wrap gap-3 pointer-events-auto">
+                {files.map((fileObj, index) => {
+                  const isImage = fileObj.file.type.startsWith('image/');
+                  return (
+                    <div key={index} className="group relative flex items-center gap-3 bg-background/95 backdrop-blur-md border border-primary/20 shadow-lg pl-1 pr-3 py-1 rounded-2xl animate-in fade-in slide-in-from-bottom-2">
+                      {isImage ? (
+                        <div className="h-10 w-10 rounded-xl overflow-hidden border border-border bg-muted">
+                          <img
+                            src={URL.createObjectURL(fileObj.file)}
+                            alt="preview"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <FileTextIcon className="h-5 w-5 text-primary" />
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0 max-w-[150px]">
+                        <span className="text-xs font-semibold truncate">{fileObj.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{(fileObj.file.size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFiles(prev => prev.filter((_, i) => i !== index))}
+                        className="ml-1 h-6 w-6 flex items-center justify-center bg-muted hover:bg-destructive hover:text-white rounded-full transition-all shadow-sm"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="max-w-5xl mx-auto pointer-events-auto shadow-2xl rounded-2xl bg-background/80 backdrop-blur-md border border-border/50 p-2">
               <div className="flex gap-2 items-end">
                 <Button
@@ -1216,7 +1266,7 @@ const Ask = () => {
                 <input
                   type="file"
                   multiple
-                  accept=".pdf"
+                  accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                   onChange={handleFileUpload}
                   ref={fileInputRef}
                   className="hidden"

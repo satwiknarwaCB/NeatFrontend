@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, Search, FileText, FileEdit, MessageCircle, Scale, LogOut, Home, ChevronLeft, ChevronRight } from "lucide-react";
+import { Menu, Search, FileText, FileEdit, MessageCircle, Scale, LogOut, Home, ChevronLeft, ChevronRight, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/contexts/SidebarContext";
 
@@ -19,6 +19,7 @@ const GlobalSidebar = ({ isPublic = true }: GlobalSidebarProps) => {
     { icon: MessageCircle, label: "Ask", path: `${basePath}/assistant` },
     { icon: FileText, label: "Interact", path: `${basePath}/interact` },
     { icon: FileEdit, label: "Draft", path: `${basePath}/draft` },
+    { icon: Bot, label: "Agents", path: `${basePath}/agents` },
   ];
 
   const isActive = (path: string) => location.pathname === path;

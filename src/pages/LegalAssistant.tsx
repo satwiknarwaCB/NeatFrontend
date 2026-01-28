@@ -27,12 +27,14 @@ import {
     Activity,
     Database,
     BarChart3,
-    LogOut
+    LogOut,
+    X,
+    FileUp
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getConversations, getConversation, createConversation, deleteConversation, getEmbeddingsStatus, getSessionStats, resetSession } from "@/services/legalApi";
-import { chatWithAI } from "@/services/legalChatbotApi";
+import { chatWithAI, uploadDocumentForChat, chatWithDocumentSession, deleteDocumentSession, DocumentUploadResponse } from "@/services/legalChatbotApi";
 import { Conversation as ApiConversation } from "@/services/legalApi";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -41,6 +43,7 @@ interface Message {
     role: "user" | "assistant";
     content: string;
     timestamp: Date;
+    attachments?: string[];
 }
 
 const LegalAssistant = () => {
@@ -56,6 +59,11 @@ const LegalAssistant = () => {
     const [chatSessionId, setChatSessionId] = useState<string | null>(null);
     const { toast } = useToast();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Document chat state
+    const [documentSession, setDocumentSession] = useState<DocumentUploadResponse | null>(null);
+    const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Determine if we're in dashboard (authenticated) or public mode
     const isDashboardMode = location.pathname.startsWith('/dashboard/');
@@ -594,6 +602,96 @@ const LegalAssistant = () => {
         });
     };
 
+    // Handle file selection and upload for document chat
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'image/png', 'image/jpeg'];
+        const allowedExtensions = ['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg'];
+        const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+        if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+            toast({
+                title: "Invalid file type",
+                description: "Please upload a PDF, DOCX, TXT, PNG, or JPG file.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            toast({
+                title: "File too large",
+                description: "Please upload a file smaller than 10MB.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        try {
+            setIsUploadingDocument(true);
+            // Show local preview immediately if it's an image
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    setDocumentSession({
+                        success: true,
+                        session_id: 'temp',
+                        filename: file.name,
+                        file_type: file.type,
+                        preview: e.target?.result as string,
+                        char_count: 0,
+                        chat_history_length: 0
+                    } as any);
+                };
+                reader.readAsDataURL(file);
+            }
+            const response = await uploadDocumentForChat(file);
+
+            if (response.success) {
+                setDocumentSession(response);
+                toast({
+                    title: "Document uploaded",
+                    description: `${response.filename} is ready. Ask questions about it!`,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to upload document:', error);
+            toast({
+                title: "Upload failed",
+                description: "Failed to upload document. Please try again.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsUploadingDocument(false);
+            // Reset the file input
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
+    // Handle removing the uploaded document
+    const handleRemoveDocument = async () => {
+        if (!documentSession?.session_id) return;
+
+        try {
+            await deleteDocumentSession(documentSession.session_id);
+            setDocumentSession(null);
+            toast({
+                title: "Document removed",
+                description: "You can now chat normally or upload another document."
+            });
+        } catch (error) {
+            console.error('Failed to remove document:', error);
+            // Still remove locally even if API fails
+            setDocumentSession(null);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() || isLoading) return;
@@ -602,33 +700,64 @@ const LegalAssistant = () => {
             setIsLoading(true);
             setIsTyping(true);
 
+            const messageQuerry = input.trim();
+            const currentDocSession = documentSession; // Store ref
+
             const userMessage: Message = {
                 id: Date.now().toString(),
                 role: "user",
-                content: input,
-                timestamp: new Date()
+                content: messageQuerry,
+                timestamp: new Date(),
+                attachments: (currentDocSession?.file_type?.startsWith('image/')) ? [currentDocSession.preview || ''] : undefined
             };
 
             const newMessages = [...messages, userMessage];
             setMessages(newMessages);
             setInput("");
 
-            const response = await chatWithAI(
-                input,
-                responseMode,
-                currentConversation?.id || "default"
-            );
+            // If it's a "one-off" document upload, clear the preview box
+            if (currentDocSession) {
+                setDocumentSession(null);
+            }
+
+            let responseContent: string;
+            let conversationIdFromResponse: string | undefined;
+
+            // If a document is uploaded, use document chat API
+            if (currentDocSession?.session_id && currentDocSession.session_id !== 'temp') {
+                // If query is very short/generic, nudge the AI to summarize
+                const enhancedQuery = (messageQuerry.length < 15 && (messageQuerry.toLowerCase().includes("this") || messageQuerry.toLowerCase().includes("document")))
+                    ? `Analyze and summarize this document for me: ${messageQuerry}`
+                    : messageQuerry;
+
+                const docResponse = await chatWithDocumentSession(
+                    currentDocSession.session_id,
+                    enhancedQuery,
+                    true // include_legal_knowledge
+                );
+                responseContent = docResponse.answer;
+                conversationIdFromResponse = docResponse.session_id;
+            } else {
+                // Otherwise use regular chat API
+                const response = await chatWithAI(
+                    messageQuerry,
+                    responseMode,
+                    currentConversation?.id || "default"
+                );
+                responseContent = response.response;
+                conversationIdFromResponse = response.conversation_id;
+            }
 
             // Store the chat session ID from response
-            if (response.conversation_id) {
-                setChatSessionId(response.conversation_id);
+            if (conversationIdFromResponse) {
+                setChatSessionId(conversationIdFromResponse);
             }
 
             // Immediately add the AI response to the conversation
             const aiMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: "assistant",
-                content: response.response,
+                content: responseContent,
                 timestamp: new Date()
             };
 
@@ -787,6 +916,20 @@ const LegalAssistant = () => {
                                                 : "bg-muted rounded-tl-none"
                                         )}>
                                             <div className="whitespace-pre-wrap text-sm">
+                                                {message.attachments && message.attachments.length > 0 && (
+                                                    <div className="mb-3 flex flex-wrap gap-2">
+                                                        {message.attachments.map((url, i) => (
+                                                            <div key={i} className="max-w-[280px] rounded-xl overflow-hidden shadow-md bg-background group/img relative">
+                                                                <img
+                                                                    src={url}
+                                                                    alt="attachment"
+                                                                    className="w-full h-auto object-contain cursor-zoom-in transition-transform group-hover/img:scale-[1.02]"
+                                                                    onClick={() => window.open(url, '_blank')}
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {lines.map((line, index) => (
                                                     <div
                                                         key={index}
@@ -839,21 +982,75 @@ const LegalAssistant = () => {
 
                 {/* Input Area - Fixed at bottom, outside of scrollable area */}
                 <div className="border-t p-4">
+                    {/* Hidden file input */}
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                        className="hidden"
+                    />
+
+                    {documentSession && (
+                        <div className="max-w-5xl mx-auto mb-3 px-4">
+                            <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/5 border border-primary/20 rounded-2xl shadow-sm animate-in zoom-in-95 duration-200">
+                                {documentSession.file_type?.startsWith('image/') ? (
+                                    <div className="h-12 w-12 rounded-xl overflow-hidden border border-primary/20 bg-white shadow-inner">
+                                        <img src={documentSession.preview || ""} alt="uploaded" className="h-full w-full object-cover" />
+                                    </div>
+                                ) : (
+                                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                                        <FileTextIcon className="h-6 w-6 text-primary" />
+                                    </div>
+                                )}
+                                <div className="flex flex-col">
+                                    <span className="font-semibold text-sm">{documentSession.filename}</span>
+                                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
+                                        {isUploadingDocument ? "Uploading..." : "Ready for analysis"}
+                                    </span>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 ml-2 hover:bg-destructive hover:text-white rounded-full transition-all"
+                                    onClick={handleRemoveDocument}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
                         <div className="flex gap-2 items-end">
                             <Button
                                 type="button"
-                                variant="ghost"
+                                variant={documentSession ? "default" : "ghost"}
                                 size="icon"
-                                className="h-10 w-10 flex-shrink-0 rounded-xl"
-                                disabled={isLoading}
+                                className={cn(
+                                    "h-10 w-10 flex-shrink-0 rounded-xl transition-all",
+                                    documentSession && "bg-primary/20 hover:bg-primary/30"
+                                )}
+                                disabled={isLoading || isUploadingDocument}
+                                onClick={() => fileInputRef.current?.click()}
                             >
-                                <Paperclip className="h-5 w-5 text-muted-foreground" />
+                                {isUploadingDocument ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : (
+                                    <Paperclip className={cn(
+                                        "h-5 w-5",
+                                        documentSession ? "text-primary" : "text-muted-foreground"
+                                    )} />
+                                )}
                             </Button>
                             <Textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                placeholder="Message Legal Assistant..."
+                                placeholder={documentSession
+                                    ? `Ask a question about ${documentSession.filename}...`
+                                    : "Message Legal Assistant..."
+                                }
                                 className="min-h-[50px] max-h-[200px] resize-none flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                                 disabled={isLoading}
                                 onKeyDown={(e) => {

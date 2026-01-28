@@ -263,7 +263,8 @@ const Interact = () => {
           reportContent += `=======================\n`;
           reportContent += `Type: ${analysisResult.classification.document_type}\n`;
           reportContent += `Subject: ${analysisResult.classification.subject}\n`;
-          reportContent += `Confidence: ${(analysisResult.classification.importance * 100).toFixed(0)}%\n`;        }
+          reportContent += `Confidence: ${(analysisResult.classification.importance * 100).toFixed(0)}%\n`;
+        }
 
         // Add sources
         if (analysisResult.sources && analysisResult.sources.length > 0) {
@@ -509,7 +510,7 @@ const Interact = () => {
           body: formData
         });
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) {
           const error: any = new Error('API Error');
           error.status = response.status;
@@ -521,7 +522,7 @@ const Interact = () => {
           }
           throw error;
         }
-        
+
         data = await response.json();
       } else {
         // For chat operations, use the chatWithDocument service function
@@ -555,7 +556,7 @@ const Interact = () => {
       } else {
         // Fallback to direct summary access
         // Fallback to direct summary access
-          summaryValue = data.summary || "";
+        summaryValue = data.summary || "";
       }
 
       // Format the response based on the API structure and analysis type
@@ -639,7 +640,7 @@ const Interact = () => {
       });
       chatFormData.append('user_message', newMessage);
       const chatData = await chatWithDocument(chatFormData);
-      
+
       // Add to chat history with proper typing
       const newUserMessage = {
         role: 'user' as const,
@@ -806,7 +807,7 @@ const Interact = () => {
                     <input
                       type="file"
                       multiple
-                      accept=".pdf"
+                      accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                       onChange={handleFileUpload}
                       className="hidden"
                       id="file-upload"
@@ -836,7 +837,13 @@ const Interact = () => {
                             key={idx}
                             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 text-sm hover:shadow-sm transition-all"
                           >
-                            <FileIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            {file.file && file.name.match(/\.(png|jpg|jpeg|webp)$/i) ? (
+                              <div className="h-6 w-6 rounded overflow-hidden flex-shrink-0 border border-blue-200 bg-white shadow-sm">
+                                <img src={URL.createObjectURL(file.file)} alt="preview" className="h-full w-full object-cover" />
+                              </div>
+                            ) : (
+                              <FileIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            )}
                             <span className="font-medium text-blue-900 max-w-[200px] truncate">
                               {file.name}
                             </span>
@@ -905,237 +912,237 @@ const Interact = () => {
                   {/* Options Section */}
                   <div className="space-y-4">
 
-                {/* Extract Text - No Options */}
-                {analysisType === "extract-text" && (
-                  <div className="text-sm text-muted-foreground bg-gray-50 p-3 rounded-md">
-                    Text extraction will process your document and extract all readable text content.
+                    {/* Extract Text - No Options */}
+                    {analysisType === "extract-text" && (
+                      <div className="text-sm text-muted-foreground bg-gray-50 p-3 rounded-md">
+                        Text extraction will process your document and extract all readable text content.
+                      </div>
+                    )}
+
+                    {/* Summarize Options */}
+                    {analysisType === "summarize" && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="summary-instructions" className="font-medium">Summary Instructions</Label>
+                          <Textarea
+                            id="summary-instructions"
+                            value={summaryInstructions}
+                            onChange={(e) => setSummaryInstructions(e.target.value)}
+                            placeholder="Enter instructions for summarizing the document"
+                            className="min-h-24"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="summary-type" className="font-medium">Summary Type</Label>
+                          <Select value={summaryType} onValueChange={setSummaryType}>
+                            <SelectTrigger id="summary-type" className="h-10">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                              <SelectItem value="executive">Executive</SelectItem>
+                              <SelectItem value="bullet_points">Bullet Points</SelectItem>
+                              <SelectItem value="custom">Custom</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="max-length" className="font-medium">Max Length (words)</Label>
+                          <Input
+                            id="max-length"
+                            type="number"
+                            value={maxLength}
+                            onChange={(e) => setMaxLength(Number(e.target.value))}
+                            min="100"
+                            max="2000"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="flex items-center space-x-3 pt-2">
+                          <Checkbox
+                            id="include-key-points"
+                            checked={includeKeyPoints}
+                            onCheckedChange={(checked) => setIncludeKeyPoints(checked as boolean)}
+                          />
+                          <Label htmlFor="include-key-points" className="font-medium cursor-pointer">
+                            Include Key Points
+                          </Label>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Risk Assessment Options */}
+                    {analysisType === "risk" && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="document-type" className="font-medium">Document Type</Label>
+                          <Select value={documentType} onValueChange={setDocumentType}>
+                            <SelectTrigger id="document-type">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="contract">Contract</SelectItem>
+                              <SelectItem value="nda">NDA</SelectItem>
+                              <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
+                              <SelectItem value="lease">Lease</SelectItem>
+                              <SelectItem value="general">General</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="assessment-focus">Assessment Focus</Label>
+                          <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
+                            <SelectTrigger id="assessment-focus">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                              <SelectItem value="financial">Financial</SelectItem>
+                              <SelectItem value="legal">Legal</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="risk-categories">Risk Categories (comma-separated)</Label>
+                          <Input
+                            id="risk-categories"
+                            value={riskCategories}
+                            onChange={(e) => setRiskCategories(e.target.value)}
+                            placeholder="financial,legal,compliance,operational"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="custom-instructions">Custom Instructions</Label>
+                          <Textarea
+                            id="custom-instructions"
+                            value={customInstructions}
+                            onChange={(e) => setCustomInstructions(e.target.value)}
+                            placeholder="Enter any custom instructions for risk assessment"
+                          />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="include-recommendations"
+                            checked={includeRecommendations}
+                            onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
+                          />
+                          <Label htmlFor="include-recommendations">Include Recommendations</Label>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chronology Options */}
+                    {analysisType === "chronology" && (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="document-date">Document Date (YYYY-MM-DD)</Label>
+                          <Input
+                            id="document-date"
+                            type="text"
+                            value={documentDate}
+                            onChange={(e) => setDocumentDate(e.target.value)}
+                            placeholder="2024-01-01"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Classification Options */}
+                    {analysisType === "classify" && (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="document-type-hint">Document Type Hint</Label>
+                          <Input
+                            id="document-type-hint"
+                            value={documentTypeHint}
+                            onChange={(e) => setDocumentTypeHint(e.target.value)}
+                            placeholder="Optional hint about document type"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="classification-focus">Classification Focus</Label>
+                          <Input
+                            id="classification-focus"
+                            value={classificationFocus}
+                            onChange={(e) => setClassificationFocus(e.target.value)}
+                            placeholder="Optional focus area for classification"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chat Options */}
+                    {analysisType === "chat" && (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="user-message">Your Question</Label>
+                          <Textarea
+                            id="user-message"
+                            value={userMessage}
+                            onChange={(e) => setUserMessage(e.target.value)}
+                            placeholder="Ask a question about the document"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="chat-mode">Chat Mode</Label>
+                          <Select value={chatMode} onValueChange={(value) => setChatMode(value as "Document Only" | "Layman Explanation" | "Hybrid (Smart)" | "General Chat")}>
+                            <SelectTrigger id="chat-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Document Only">Document Only</SelectItem>
+                              <SelectItem value="Layman Explanation">Layman Explanation</SelectItem>
+                              <SelectItem value="Hybrid (Smart)">Hybrid (Smart)</SelectItem>
+                              <SelectItem value="General Chat">General Chat</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {chatMode === "Document Only"
+                              ? "Get detailed, professional answers based on the document content"
+                              : chatMode === "Layman Explanation"
+                                ? "Get simple explanations in everyday language"
+                                : chatMode === "Hybrid (Smart)"
+                                  ? "Intelligent combination of document content and general knowledge"
+                                  : "General legal chat using broad knowledge base"}
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="temperature">Response Creativity ({temperature})</Label>
+                          <Slider
+                            id="temperature"
+                            min={0}
+                            max={1}
+                            step={0.1}
+                            value={[temperature]}
+                            onValueChange={(value) => setTemperature(value[0])}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Lower values (0.0-0.3) = more focused and deterministic responses.
+                            Higher values (0.7-1.0) = more creative and varied responses.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="max-tokens">Response Length ({maxTokens} tokens)</Label>
+                          <Slider
+                            id="max-tokens"
+                            min={500}
+                            max={4000}
+                            step={100}
+                            value={[maxTokens]}
+                            onValueChange={(value) => setMaxTokens(value[0])}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Adjust the maximum length of the AI response. Higher values allow for longer, more detailed answers.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-
-                {/* Summarize Options */}
-                {analysisType === "summarize" && (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="summary-instructions" className="font-medium">Summary Instructions</Label>
-                      <Textarea
-                        id="summary-instructions"
-                        value={summaryInstructions}
-                        onChange={(e) => setSummaryInstructions(e.target.value)}
-                        placeholder="Enter instructions for summarizing the document"
-                        className="min-h-24"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="summary-type" className="font-medium">Summary Type</Label>
-                      <Select value={summaryType} onValueChange={setSummaryType}>
-                        <SelectTrigger id="summary-type" className="h-10">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="comprehensive">Comprehensive</SelectItem>
-                          <SelectItem value="executive">Executive</SelectItem>
-                          <SelectItem value="bullet_points">Bullet Points</SelectItem>
-                          <SelectItem value="custom">Custom</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="max-length" className="font-medium">Max Length (words)</Label>
-                      <Input
-                        id="max-length"
-                        type="number"
-                        value={maxLength}
-                        onChange={(e) => setMaxLength(Number(e.target.value))}
-                        min="100"
-                        max="2000"
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="flex items-center space-x-3 pt-2">
-                      <Checkbox
-                        id="include-key-points"
-                        checked={includeKeyPoints}
-                        onCheckedChange={(checked) => setIncludeKeyPoints(checked as boolean)}
-                      />
-                      <Label htmlFor="include-key-points" className="font-medium cursor-pointer">
-                        Include Key Points
-                      </Label>
-                    </div>
-                  </div>
-                )}
-
-                {/* Risk Assessment Options */}
-                {analysisType === "risk" && (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="document-type" className="font-medium">Document Type</Label>
-                      <Select value={documentType} onValueChange={setDocumentType}>
-                        <SelectTrigger id="document-type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="contract">Contract</SelectItem>
-                          <SelectItem value="nda">NDA</SelectItem>
-                          <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
-                          <SelectItem value="lease">Lease</SelectItem>
-                          <SelectItem value="general">General</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="assessment-focus">Assessment Focus</Label>
-                      <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
-                        <SelectTrigger id="assessment-focus">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="comprehensive">Comprehensive</SelectItem>
-                          <SelectItem value="financial">Financial</SelectItem>
-                          <SelectItem value="legal">Legal</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="risk-categories">Risk Categories (comma-separated)</Label>
-                      <Input
-                        id="risk-categories"
-                        value={riskCategories}
-                        onChange={(e) => setRiskCategories(e.target.value)}
-                        placeholder="financial,legal,compliance,operational"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="custom-instructions">Custom Instructions</Label>
-                      <Textarea
-                        id="custom-instructions"
-                        value={customInstructions}
-                        onChange={(e) => setCustomInstructions(e.target.value)}
-                        placeholder="Enter any custom instructions for risk assessment"
-                      />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="include-recommendations"
-                        checked={includeRecommendations}
-                        onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
-                      />
-                      <Label htmlFor="include-recommendations">Include Recommendations</Label>
-                    </div>
-                  </div>
-                )}
-
-                {/* Chronology Options */}
-                {analysisType === "chronology" && (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="document-date">Document Date (YYYY-MM-DD)</Label>
-                      <Input
-                        id="document-date"
-                        type="text"
-                        value={documentDate}
-                        onChange={(e) => setDocumentDate(e.target.value)}
-                        placeholder="2024-01-01"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Classification Options */}
-                {analysisType === "classify" && (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="document-type-hint">Document Type Hint</Label>
-                      <Input
-                        id="document-type-hint"
-                        value={documentTypeHint}
-                        onChange={(e) => setDocumentTypeHint(e.target.value)}
-                        placeholder="Optional hint about document type"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="classification-focus">Classification Focus</Label>
-                      <Input
-                        id="classification-focus"
-                        value={classificationFocus}
-                        onChange={(e) => setClassificationFocus(e.target.value)}
-                        placeholder="Optional focus area for classification"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Chat Options */}
-                {analysisType === "chat" && (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="user-message">Your Question</Label>
-                      <Textarea
-                        id="user-message"
-                        value={userMessage}
-                        onChange={(e) => setUserMessage(e.target.value)}
-                        placeholder="Ask a question about the document"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="chat-mode">Chat Mode</Label>
-                      <Select value={chatMode} onValueChange={(value) => setChatMode(value as "Document Only" | "Layman Explanation" | "Hybrid (Smart)" | "General Chat")}>
-                        <SelectTrigger id="chat-mode">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Document Only">Document Only</SelectItem>
-                          <SelectItem value="Layman Explanation">Layman Explanation</SelectItem>
-                          <SelectItem value="Hybrid (Smart)">Hybrid (Smart)</SelectItem>
-                          <SelectItem value="General Chat">General Chat</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        {chatMode === "Document Only"
-                          ? "Get detailed, professional answers based on the document content"
-                          : chatMode === "Layman Explanation"
-                          ? "Get simple explanations in everyday language"
-                          : chatMode === "Hybrid (Smart)"
-                          ? "Intelligent combination of document content and general knowledge"
-                          : "General legal chat using broad knowledge base"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="temperature">Response Creativity ({temperature})</Label>
-                      <Slider
-                        id="temperature"
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        value={[temperature]}
-                        onValueChange={(value) => setTemperature(value[0])}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Lower values (0.0-0.3) = more focused and deterministic responses.
-                        Higher values (0.7-1.0) = more creative and varied responses.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="max-tokens">Response Length ({maxTokens} tokens)</Label>
-                      <Slider
-                        id="max-tokens"
-                        min={500}
-                        max={4000}
-                        step={100}
-                        value={[maxTokens]}
-                        onValueChange={(value) => setMaxTokens(value[0])}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Adjust the maximum length of the AI response. Higher values allow for longer, more detailed answers.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
               {/* Analyze Button */}
               <Button
@@ -1195,515 +1202,514 @@ const Interact = () => {
               </Card>
             </div>
           </div>
-      ) : (
-        // AFTER ANALYSIS: Clean Vertical Layout
-        <div className="space-y-6">
-          {/* RESULTS CARD - Full Width */}
-          <Card className="border-2 border-gray-200 bg-white shadow-lg">
-            <CardHeader className="pb-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-md">
-                    <CheckCircle2 className="h-6 w-6 text-white" />
+        ) : (
+          // AFTER ANALYSIS: Clean Vertical Layout
+          <div className="space-y-6">
+            {/* RESULTS CARD - Full Width */}
+            <Card className="border-2 border-gray-200 bg-white shadow-lg">
+              <CardHeader className="pb-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-md">
+                      <CheckCircle2 className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl font-bold text-gray-900">Analysis Complete</CardTitle>
+                      <CardDescription className="text-sm mt-1">
+                        {getAnalysisTitle(analysisType)} • {files[0]?.name}
+                      </CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-xl font-bold text-gray-900">Analysis Complete</CardTitle>
-                    <CardDescription className="text-sm mt-1">
-                      {getAnalysisTitle(analysisType)} • {files[0]?.name}
-                    </CardDescription>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6">
+                {/* Main Results Section */}
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <BookOpen className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {getAnalysisTitle(analysisType)}
+                    </h3>
                   </div>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="p-6">
-              {/* Main Results Section */}
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <BookOpen className="h-5 w-5 text-blue-600" />
-                  <h3 className="text-lg font-bold text-gray-900">
-                    {getAnalysisTitle(analysisType)}
-                  </h3>
-                </div>
-                <div className="max-h-[500px] overflow-y-auto bg-gray-50 rounded-lg p-6 border-2 border-gray-200 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-                  {/* Extract Text Results */}
-                  {analysisType === "extract-text" && analysisResult.tagged_sections && analysisResult.tagged_sections.length > 0 ? (
-                    <div className="space-y-4">
-                      {analysisResult.tagged_sections.map((section, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
-                          <h4 className="font-semibold text-gray-900 mb-2">{section.heading || `Section ${idx + 1}`}</h4>
-                          <p className="text-base leading-relaxed text-gray-700 whitespace-pre-wrap">{section.body}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : analysisType === "extract-text" && analysisResult.raw_text ? (
-                    <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">{analysisResult.raw_text}</p>
-                  ) : analysisType === "clauses" && analysisResult.clause_analysis && analysisResult.clause_analysis.length > 0 ? (
-                    /* Clause Analysis Results */
-                    <div className="space-y-4">
-                      {analysisResult.clause_analysis.map((section, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
-                          <h4 className="font-semibold text-gray-900 mb-3">{section.heading}</h4>
-                          <div className="space-y-2">
-                            {section.clauses.map((clause, cIdx) => (
-                              <div key={cIdx} className="pl-3 border-l-2 border-teal-500 py-2">
-                                <p className="text-sm text-gray-700 mb-1">{clause.clause}</p>
-                                <p className="text-xs text-gray-600 italic">{clause.summary}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : analysisType === "clauses" && analysisResult.clauses && analysisResult.clauses.length > 0 ? (
-                    /* Alternative Clause Format */
-                    <div className="space-y-3">
-                      {analysisResult.clauses.map((clause, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="font-semibold text-gray-900">{clause.type || clause.clause_type}</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${clause.risk_level === 'high' || clause.severity === 'high' ? 'bg-red-100 text-red-800' :
-                              clause.risk_level === 'medium' || clause.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                              {clause.risk_level || clause.severity}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700">{clause.text || clause.risk_description}</p>
-                          {clause.recommendation && (
-                            <p className="text-xs text-teal-700 mt-2">💡 {clause.recommendation}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : analysisType === "risk" && analysisResult.risks && analysisResult.risks.length > 0 ? (
-                    /* Risk Analysis Results - Dynamic Rendering */
-                    <div className="space-y-4">
-                      {analysisResult.risks.map((risk, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
-                          {Object.entries(risk).map(([key, value]) => {
-                            // Skip null or undefined values
-                            if (value === null || value === undefined) return null;
-                            
-                            // Special handling for severity to show colored badge
-                            if (key === 'severity') {
-                              return (
-                                <div key={key} className="flex justify-between items-start mb-2">
-                                  <span className="font-medium text-gray-700 capitalize">{key}:</span>
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                    value === 'High' || value === 'high' ? 'bg-red-100 text-red-800' :
-                                    value === 'Medium' || value === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                    value === 'Low' || value === 'low' ? 'bg-green-100 text-green-800' :
-                                      'bg-blue-100 text-blue-800'
-                                  }`}>
-                                    {String(value)}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            
-                            // Special handling for type/clause_type to show as title
-                            if (key === 'type' || key === 'clause_type') {
-                              return (
-                                <h3 key={key} className="font-semibold text-gray-900 mb-2">
-                                  {String(value)}
-                                </h3>
-                              );
-                            }
-                            
-                            // Format the key for display
-                            const formattedKey = key
-                              .replace(/_/g, ' ')
-                              .replace(/\b\w/g, char => char.toUpperCase());
-                            
-                            // For complex objects, stringify them
-                            const displayValue = typeof value === 'object' 
-                              ? JSON.stringify(value, null, 2) 
-                              : String(value);
-                            
-                            return (
-                              <div key={key} className="mb-2">
-                                <span className="font-medium text-gray-700 capitalize">{formattedKey}:</span>
-                                <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
-                                  {displayValue}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  ) : analysisType === "chronology" && analysisResult.timeline?.events && analysisResult.timeline.events.length > 0 ? (
-                    /* Chronology Builder Results */
-                    <div className="space-y-4">
-                      {analysisResult.timeline.events.map((event, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
-                          <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-semibold text-gray-900">{event.event_type}</h3>
-                            <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              {(event.confidence_score * 100).toFixed(1)}% Confidence
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700 mb-3">{event.description}</p>
-                          {event.temporal_expressions && event.temporal_expressions.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {event.temporal_expressions.map((expr, exprIdx) => (
-                                <span key={exprIdx} className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded">
-                                  {expr.text}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    /* Default: Summary/Analysis text */
-                    <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">
-                      {analysisResult.summary || analysisResult.analysis || "Analysis completed successfully."}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Risk Analysis Configuration Options - Only show when analysisType is "risk" */}
-              {analysisType === "risk" && (
-                <Card className="bg-white border border-gray-200 mt-4">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                      <Sliders className="h-4 w-4 text-gray-600" />
-                      Risk Analysis Configuration
-                    </CardTitle>
-                    <CardDescription className="text-xs text-gray-500">
-                      Customize your risk analysis parameters
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="document-type-slide">Document Type</Label>
-                        <Select value={documentType} onValueChange={setDocumentType}>
-                          <SelectTrigger id="document-type-slide">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="contract">Contract</SelectItem>
-                            <SelectItem value="nda">NDA</SelectItem>
-                            <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
-                            <SelectItem value="lease">Lease</SelectItem>
-                            <SelectItem value="general">General</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="assessment-focus-slide">Assessment Focus</Label>
-                        <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
-                          <SelectTrigger id="assessment-focus-slide">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="comprehensive">Comprehensive</SelectItem>
-                            <SelectItem value="financial">Financial</SelectItem>
-                            <SelectItem value="legal">Legal</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="risk-categories-slide">Risk Categories (comma-separated)</Label>
-                        <Input
-                          id="risk-categories-slide"
-                          value={riskCategories}
-                          onChange={(e) => setRiskCategories(e.target.value)}
-                          placeholder="financial,legal,compliance,operational"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="custom-instructions-slide">Custom Instructions</Label>
-                        <Textarea
-                          id="custom-instructions-slide"
-                          value={customInstructions}
-                          onChange={(e) => setCustomInstructions(e.target.value)}
-                          placeholder="Enter any custom instructions for risk assessment"
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="include-recommendations-slide"
-                          checked={includeRecommendations}
-                          onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
-                        />
-                        <Label htmlFor="include-recommendations-slide">Include Recommendations</Label>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Chronology Builder Configuration Options - Only show when analysisType is "chronology" */}
-              {analysisType === "chronology" && (
-                <Card className="bg-white border border-gray-200 mt-4">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-600" />
-                      Chronology Builder Configuration
-                    </CardTitle>
-                    <CardDescription className="text-xs text-gray-500">
-                      Set the document date for chronology analysis
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="document-date-slide">Document Date (YYYY-MM-DD)</Label>
-                        <Input
-                          id="document-date-slide"
-                          type="text"
-                          value={documentDate}
-                          onChange={(e) => setDocumentDate(e.target.value)}
-                          placeholder="2024-01-01"
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Additional Info Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                {/* Sources Section */}
-                {analysisResult.sources && analysisResult.sources.length > 0 && (
-                  <Card className="bg-white border-2 border-gray-200 shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                        <FileIcon className="h-5 w-5 text-blue-600" />
-                        Sources
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        {analysisResult.sources.map((source, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
-                            <FileIcon className="h-3 w-3 text-teal-600" />
-                            <span>{source.file_name}</span>
+                  <div className="max-h-[500px] overflow-y-auto bg-gray-50 rounded-lg p-6 border-2 border-gray-200 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                    {/* Extract Text Results */}
+                    {analysisType === "extract-text" && analysisResult.tagged_sections && analysisResult.tagged_sections.length > 0 ? (
+                      <div className="space-y-4">
+                        {analysisResult.tagged_sections.map((section, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                            <h4 className="font-semibold text-gray-900 mb-2">{section.heading || `Section ${idx + 1}`}</h4>
+                            <p className="text-base leading-relaxed text-gray-700 whitespace-pre-wrap">{section.body}</p>
                           </div>
                         ))}
+                      </div>
+                    ) : analysisType === "extract-text" && analysisResult.raw_text ? (
+                      <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">{analysisResult.raw_text}</p>
+                    ) : analysisType === "clauses" && analysisResult.clause_analysis && analysisResult.clause_analysis.length > 0 ? (
+                      /* Clause Analysis Results */
+                      <div className="space-y-4">
+                        {analysisResult.clause_analysis.map((section, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                            <h4 className="font-semibold text-gray-900 mb-3">{section.heading}</h4>
+                            <div className="space-y-2">
+                              {section.clauses.map((clause, cIdx) => (
+                                <div key={cIdx} className="pl-3 border-l-2 border-teal-500 py-2">
+                                  <p className="text-sm text-gray-700 mb-1">{clause.clause}</p>
+                                  <p className="text-xs text-gray-600 italic">{clause.summary}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : analysisType === "clauses" && analysisResult.clauses && analysisResult.clauses.length > 0 ? (
+                      /* Alternative Clause Format */
+                      <div className="space-y-3">
+                        {analysisResult.clauses.map((clause, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="font-semibold text-gray-900">{clause.type || clause.clause_type}</span>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${clause.risk_level === 'high' || clause.severity === 'high' ? 'bg-red-100 text-red-800' :
+                                clause.risk_level === 'medium' || clause.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                {clause.risk_level || clause.severity}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700">{clause.text || clause.risk_description}</p>
+                            {clause.recommendation && (
+                              <p className="text-xs text-teal-700 mt-2">💡 {clause.recommendation}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : analysisType === "risk" && analysisResult.risks && analysisResult.risks.length > 0 ? (
+                      /* Risk Analysis Results - Dynamic Rendering */
+                      <div className="space-y-4">
+                        {analysisResult.risks.map((risk, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                            {Object.entries(risk).map(([key, value]) => {
+                              // Skip null or undefined values
+                              if (value === null || value === undefined) return null;
+
+                              // Special handling for severity to show colored badge
+                              if (key === 'severity') {
+                                return (
+                                  <div key={key} className="flex justify-between items-start mb-2">
+                                    <span className="font-medium text-gray-700 capitalize">{key}:</span>
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${value === 'High' || value === 'high' ? 'bg-red-100 text-red-800' :
+                                      value === 'Medium' || value === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                        value === 'Low' || value === 'low' ? 'bg-green-100 text-green-800' :
+                                          'bg-blue-100 text-blue-800'
+                                      }`}>
+                                      {String(value)}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              // Special handling for type/clause_type to show as title
+                              if (key === 'type' || key === 'clause_type') {
+                                return (
+                                  <h3 key={key} className="font-semibold text-gray-900 mb-2">
+                                    {String(value)}
+                                  </h3>
+                                );
+                              }
+
+                              // Format the key for display
+                              const formattedKey = key
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, char => char.toUpperCase());
+
+                              // For complex objects, stringify them
+                              const displayValue = typeof value === 'object'
+                                ? JSON.stringify(value, null, 2)
+                                : String(value);
+
+                              return (
+                                <div key={key} className="mb-2">
+                                  <span className="font-medium text-gray-700 capitalize">{formattedKey}:</span>
+                                  <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                                    {displayValue}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    ) : analysisType === "chronology" && analysisResult.timeline?.events && analysisResult.timeline.events.length > 0 ? (
+                      /* Chronology Builder Results */
+                      <div className="space-y-4">
+                        {analysisResult.timeline.events.map((event, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-start mb-2">
+                              <h3 className="font-semibold text-gray-900">{event.event_type}</h3>
+                              <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                {(event.confidence_score * 100).toFixed(1)}% Confidence
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 mb-3">{event.description}</p>
+                            {event.temporal_expressions && event.temporal_expressions.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {event.temporal_expressions.map((expr, exprIdx) => (
+                                  <span key={exprIdx} className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded">
+                                    {expr.text}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* Default: Summary/Analysis text */
+                      <p className="text-base leading-relaxed text-gray-800 whitespace-pre-wrap">
+                        {analysisResult.summary || analysisResult.analysis || "Analysis completed successfully."}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Risk Analysis Configuration Options - Only show when analysisType is "risk" */}
+                {analysisType === "risk" && (
+                  <Card className="bg-white border border-gray-200 mt-4">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                        <Sliders className="h-4 w-4 text-gray-600" />
+                        Risk Analysis Configuration
+                      </CardTitle>
+                      <CardDescription className="text-xs text-gray-500">
+                        Customize your risk analysis parameters
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="document-type-slide">Document Type</Label>
+                          <Select value={documentType} onValueChange={setDocumentType}>
+                            <SelectTrigger id="document-type-slide">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="contract">Contract</SelectItem>
+                              <SelectItem value="nda">NDA</SelectItem>
+                              <SelectItem value="employment_agreement">Employment Agreement</SelectItem>
+                              <SelectItem value="lease">Lease</SelectItem>
+                              <SelectItem value="general">General</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="assessment-focus-slide">Assessment Focus</Label>
+                          <Select value={assessmentFocus} onValueChange={setAssessmentFocus}>
+                            <SelectTrigger id="assessment-focus-slide">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                              <SelectItem value="financial">Financial</SelectItem>
+                              <SelectItem value="legal">Legal</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="risk-categories-slide">Risk Categories (comma-separated)</Label>
+                          <Input
+                            id="risk-categories-slide"
+                            value={riskCategories}
+                            onChange={(e) => setRiskCategories(e.target.value)}
+                            placeholder="financial,legal,compliance,operational"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="custom-instructions-slide">Custom Instructions</Label>
+                          <Textarea
+                            id="custom-instructions-slide"
+                            value={customInstructions}
+                            onChange={(e) => setCustomInstructions(e.target.value)}
+                            placeholder="Enter any custom instructions for risk assessment"
+                          />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="include-recommendations-slide"
+                            checked={includeRecommendations}
+                            onCheckedChange={(checked) => setIncludeRecommendations(checked as boolean)}
+                          />
+                          <Label htmlFor="include-recommendations-slide">Include Recommendations</Label>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 )}
 
-                {/* Processing Metadata Section */}
-                <Card className="bg-white border-2 border-gray-200 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-purple-600" />
-                      Processing Info
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Processing Time:</span>
-                        <span className="font-semibold text-gray-900 ml-2">
-                          {analysisResult.processing_time?.toFixed(2)}s
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Tokens Used:</span>
-                        <span className="font-semibold text-gray-900 ml-2">
-                          {analysisResult.tokens_used?.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-gray-600">Analysis ID:</span>
-                        <span className="font-mono text-xs text-gray-700 ml-2 break-all">
-                          {analysisResult.analysis_id}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Export & Actions */}
-                <div className="col-span-full mt-2">
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleExportReport('txt')}
-                        className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        TXT
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleExportReport('pdf')}
-                        className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        PDF
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleExportReport('docx')}
-                        className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        DOCX
-                      </Button>
-                    </div>
-                    <Card className="flex-1 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 p-3">
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start text-blue-700 hover:text-blue-900 hover:bg-blue-100/50 font-medium"
-                        size="sm"
-                      >
-                        <MessageCircle className="h-4 w-4 mr-2" />
-                        Ask follow-up questions
-                      </Button>
-                    </Card>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* RECONFIGURE SECTION */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Upload Another Document */}
-            <Card className="border-2 border-gray-200 bg-white shadow-sm">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <Upload className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-semibold text-gray-800">Upload New Document</CardTitle>
-                    <CardDescription className="text-xs">Analyze another file</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer border-gray-300 hover:border-blue-500 hover:bg-blue-50/50">
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload-after"
-                  />
-                  <label htmlFor="file-upload-after" className="cursor-pointer">
-                    <Upload className="mx-auto h-8 w-8 mb-2 text-gray-400" />
-                    <p className="text-sm font-medium text-gray-700">
-                      Upload more files
-                    </p>
-                  </label>
-                </div>
-
-                {files.length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold text-gray-600">
-                      Uploaded Files
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      {files.map((file, idx) => (
-                        <div
-                          key={idx}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs"
-                        >
-                          <FileIcon className="h-3 w-3 text-teal-600" />
-                          <span className="font-medium text-teal-900 max-w-[150px] truncate">
-                            {file.name}
-                          </span>
-                          {file.status === "uploading" && (
-                            <Loader2 className="h-3 w-3 animate-spin text-teal-600" />
-                          )}
-                          {file.status === "ready" && (
-                            <CheckCircle2 className="h-3 w-3 text-teal-600" />
-                          )}
-                          <button
-                            onClick={() => handleRemoveFile(idx)}
-                            className="ml-1 hover:bg-teal-100 rounded-full p-0.5 transition-colors"
-                            aria-label="Remove file"
-                          >
-                            <X className="h-3 w-3 text-teal-700 hover:text-teal-900" />
-                          </button>
+                {/* Chronology Builder Configuration Options - Only show when analysisType is "chronology" */}
+                {analysisType === "chronology" && (
+                  <Card className="bg-white border border-gray-200 mt-4">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-gray-600" />
+                        Chronology Builder Configuration
+                      </CardTitle>
+                      <CardDescription className="text-xs text-gray-500">
+                        Set the document date for chronology analysis
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="document-date-slide">Document Date (YYYY-MM-DD)</Label>
+                          <Input
+                            id="document-date-slide"
+                            type="text"
+                            value={documentDate}
+                            onChange={(e) => setDocumentDate(e.target.value)}
+                            placeholder="2024-01-01"
+                          />
                         </div>
-                      ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Additional Info Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                  {/* Sources Section */}
+                  {analysisResult.sources && analysisResult.sources.length > 0 && (
+                    <Card className="bg-white border-2 border-gray-200 shadow-sm">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                          <FileIcon className="h-5 w-5 text-blue-600" />
+                          Sources
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {analysisResult.sources.map((source, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                              <FileIcon className="h-3 w-3 text-teal-600" />
+                              <span>{source.file_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Processing Metadata Section */}
+                  <Card className="bg-white border-2 border-gray-200 shadow-sm">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5 text-purple-600" />
+                        Processing Info
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">Processing Time:</span>
+                          <span className="font-semibold text-gray-900 ml-2">
+                            {analysisResult.processing_time?.toFixed(2)}s
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Tokens Used:</span>
+                          <span className="font-semibold text-gray-900 ml-2">
+                            {analysisResult.tokens_used?.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-600">Analysis ID:</span>
+                          <span className="font-mono text-xs text-gray-700 ml-2 break-all">
+                            {analysisResult.analysis_id}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Export & Actions */}
+                  <div className="col-span-full mt-2">
+                    <div className="flex flex-wrap gap-3 items-center">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleExportReport('txt')}
+                          className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          TXT
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleExportReport('pdf')}
+                          className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleExportReport('docx')}
+                          className="h-10 px-4 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          DOCX
+                        </Button>
+                      </div>
+                      <Card className="flex-1 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 p-3">
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start text-blue-700 hover:text-blue-900 hover:bg-blue-100/50 font-medium"
+                          size="sm"
+                        >
+                          <MessageCircle className="h-4 w-4 mr-2" />
+                          Ask follow-up questions
+                        </Button>
+                      </Card>
                     </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Select Analysis Mode */}
-            <Card className="border-2 border-gray-200 bg-white shadow-sm">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-lg bg-purple-50 flex items-center justify-center">
-                    <BarChart3 className="h-5 w-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-semibold text-gray-800">Analysis Mode</CardTitle>
-                    <CardDescription className="text-xs">Change analysis type</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Select value={analysisType} onValueChange={(value) => {
-                    setAnalysisType(value);
-                    // Don't clear analysis result in AFTER ANALYSIS section
-                    // This keeps the current results visible while changing mode
-                    setChatHistory([]);
-                    setShowRightPanel(false);
-                  }}>
-                    <SelectTrigger className="h-10 text-sm">
-                      <SelectValue placeholder="Select analysis type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="summarize">Summarize Document</SelectItem>
-                      <SelectItem value="extract-text">Extract Text</SelectItem>
-                      <SelectItem value="clauses">Extract Key Clauses</SelectItem>
-                      <SelectItem value="risk">Risk Analysis</SelectItem>
-                      <SelectItem value="chronology">Chronology Builder</SelectItem>
-                      <SelectItem value="classify">Document Classification</SelectItem>
-                      <SelectItem value="chat">Document Chat</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Analyze Button - Full Width */}
-            <div className="col-span-full">
-              <Button
-                onClick={handleAnalyze}
-                disabled={isAnalyzing || files.length === 0}
-                className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-200"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Re-analyzing...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 h-5 w-5" />
-                    Re-analyze Document
-                  </>
-                )}
-              </Button>
+            {/* RECONFIGURE SECTION */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Upload Another Document */}
+              <Card className="border-2 border-gray-200 bg-white shadow-sm">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <Upload className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-semibold text-gray-800">Upload New Document</CardTitle>
+                      <CardDescription className="text-xs">Analyze another file</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer border-gray-300 hover:border-blue-500 hover:bg-blue-50/50">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload-after"
+                    />
+                    <label htmlFor="file-upload-after" className="cursor-pointer">
+                      <Upload className="mx-auto h-8 w-8 mb-2 text-gray-400" />
+                      <p className="text-sm font-medium text-gray-700">
+                        Upload more files
+                      </p>
+                    </label>
+                  </div>
+
+                  {files.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-gray-600">
+                        Uploaded Files
+                      </Label>
+                      <div className="flex flex-wrap gap-2">
+                        {files.map((file, idx) => (
+                          <div
+                            key={idx}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs"
+                          >
+                            <FileIcon className="h-3 w-3 text-teal-600" />
+                            <span className="font-medium text-teal-900 max-w-[150px] truncate">
+                              {file.name}
+                            </span>
+                            {file.status === "uploading" && (
+                              <Loader2 className="h-3 w-3 animate-spin text-teal-600" />
+                            )}
+                            {file.status === "ready" && (
+                              <CheckCircle2 className="h-3 w-3 text-teal-600" />
+                            )}
+                            <button
+                              onClick={() => handleRemoveFile(idx)}
+                              className="ml-1 hover:bg-teal-100 rounded-full p-0.5 transition-colors"
+                              aria-label="Remove file"
+                            >
+                              <X className="h-3 w-3 text-teal-700 hover:text-teal-900" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Select Analysis Mode */}
+              <Card className="border-2 border-gray-200 bg-white shadow-sm">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-lg bg-purple-50 flex items-center justify-center">
+                      <BarChart3 className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-semibold text-gray-800">Analysis Mode</CardTitle>
+                      <CardDescription className="text-xs">Change analysis type</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <Select value={analysisType} onValueChange={(value) => {
+                      setAnalysisType(value);
+                      // Don't clear analysis result in AFTER ANALYSIS section
+                      // This keeps the current results visible while changing mode
+                      setChatHistory([]);
+                      setShowRightPanel(false);
+                    }}>
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Select analysis type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="summarize">Summarize Document</SelectItem>
+                        <SelectItem value="extract-text">Extract Text</SelectItem>
+                        <SelectItem value="clauses">Extract Key Clauses</SelectItem>
+                        <SelectItem value="risk">Risk Analysis</SelectItem>
+                        <SelectItem value="chronology">Chronology Builder</SelectItem>
+                        <SelectItem value="classify">Document Classification</SelectItem>
+                        <SelectItem value="chat">Document Chat</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Analyze Button - Full Width */}
+              <div className="col-span-full">
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing || files.length === 0}
+                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-200"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Re-analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-5 w-5" />
+                      Re-analyze Document
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
     </div>
   );
 };

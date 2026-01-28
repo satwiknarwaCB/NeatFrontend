@@ -34,6 +34,7 @@ import Security from "./pages/Security";
 import Contact from "./pages/Contact";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import Agents from "./pages/Agents";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,7 @@ const App = () => (
                   <Route path="/public/assistant" element={<PublicDashboard><LegalAssistant /></PublicDashboard>} />
                   <Route path="/public/interact" element={<PublicDashboard><PublicInteract /></PublicDashboard>} />
                   <Route path="/public/draft" element={<PublicDashboard><Draft /></PublicDashboard>} />
+                  <Route path="/public/agents" element={<PublicDashboard><Agents /></PublicDashboard>} />
                   <Route path="/public/chat" element={<PublicDashboard><Chat /></PublicDashboard>} />
                   <Route path="/public/ask" element={<Navigate to="/assistant" replace />} />
                   <Route path="/public/assistant" element={<Navigate to="/assistant" replace />} />
@@ -83,6 +85,7 @@ const App = () => (
                   <Route path="/dashboard/interact" element={<ProtectedRoute><DashboardLayout><Interact /></DashboardLayout></ProtectedRoute>} />
                   <Route path="/dashboard/draft" element={<ProtectedRoute><DashboardLayout><Draft /></DashboardLayout></ProtectedRoute>} />
                   <Route path="/dashboard/chat" element={<ProtectedRoute><DashboardLayout><Chat /></DashboardLayout></ProtectedRoute>} />
+                  <Route path="/dashboard/agents" element={<ProtectedRoute><DashboardLayout><Agents /></DashboardLayout></ProtectedRoute>} />
                   <Route path="/dashboard/profile" element={<ProtectedRoute><DashboardLayout><Profile /></DashboardLayout></ProtectedRoute>} />
 
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
